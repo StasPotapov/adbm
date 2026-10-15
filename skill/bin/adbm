@@ -927,7 +927,7 @@ def cmd_doctor(a):
     ff = shutil.which("ffmpeg")
     row(bool(ff) or None, "ffmpeg", ff or "needed only for record", "brew install ffmpeg")
     acli = shutil.which("android")
-    row(True if acli else None, "Android CLI (optional)", acli or "needed only for annotate",
+    row(True if acli else None, "Android CLI (optional)", acli or "only for screens without a UI tree (annotate, tap #N); the rest works without it",
         "adbm setup --android-cli --yes")
     for ok, name, detail, fix in claude_rows():
         row(ok, name, detail, fix)

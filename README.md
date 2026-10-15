@@ -43,7 +43,7 @@ ADBM does not replace these tools: it ties them together and saves the agent's t
 | [Android SDK](https://developer.android.com/tools): adb, emulator, sdkmanager, avdmanager | Google's [Android SDK License Agreement](https://developer.android.com/studio/terms); open-source parts of the SDK keep their own licenses | device connection, emulators, image downloads |
 | [Pillow](https://python-pillow.github.io) | MIT-CMU, open source | pixel diff, crops, contact sheet |
 | [FFmpeg](https://ffmpeg.org) | LGPL 2.1+, open source; a build with `--enable-gpl` is GPL 2+ | frames from video for `adbm record` |
-| [Android CLI](https://developer.android.com/tools/agents/android-cli), optional | a closed Google binary, no published license; collects usage data, `adbm` turns that off with `--no-metrics` | only `adbm annotate`: numbered elements on a screen without a UI tree |
+| [Android CLI](https://developer.android.com/tools/agents/android-cli), optional | a closed Google binary, no published license; collects usage data, `adbm` turns that off with `--no-metrics` | needed for screens without a UI tree: games, Canvas, WebView without accessibility. `adbm annotate` draws numbers of the found elements on a frame, `adbm tap '#7'` taps by number. Without Android CLI everything else works, and on such a screen the agent taps by coordinates from an `adbm look` frame. Install: `adbm setup --android-cli --yes` |
 
 ## Install
 

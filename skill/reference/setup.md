@@ -9,7 +9,7 @@
 | Python 3.9+ and Pillow | `adbm` itself: contact sheet, diff, `look` | `python3 -m pip install Pillow` |
 | Maestro | `adbm run`, `adbm type` with non-ASCII text | `adbm setup --maestro --yes` (Homebrew `mobile-dev-inc/tap/maestro`) |
 | ffmpeg | contact sheet in `adbm record` | `brew install ffmpeg` |
-| Android CLI, optional | only `adbm annotate` | `adbm setup --android-cli --yes` (cask `android-cli`) |
+| Android CLI, optional | `adbm annotate` and `tap '#N'` on screens without a UI tree; the rest works without it | `adbm setup --android-cli --yes` (cask `android-cli`) |
 | Guard hook (Claude Code) | denies `Read` of full-size frames | `adbm setup --hook --yes`: appends to `~/.claude/settings.json`; a plugin install has it |
 | `adbm-eyes` agent (Claude Code) | the subagent with 5 tools, a small start context | `adbm setup --agent --yes`: a link in `~/.claude/agents/`; a plugin install has it |
 
