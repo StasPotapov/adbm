@@ -69,13 +69,16 @@ Variables: `adbm run flow.yaml -e USER=test` → `${USER}` in the flow.
 
 ## From a manual session
 
-Every `adbm launch`, `tap`, `type`, `key`, `swipe`, `shot` is logged to `~/.cache/adbm/session.jsonl`
+Every `adbm launch`, `tap`, `type`, `key`, `swipe`, `shot`, `wait`, `assert` is logged to `~/.cache/adbm/session.jsonl`
 together with the project path. `adbm save-flow <slug> --api 35` builds a flow from the last `launch`
 of the current project:
 - `launch --clear` becomes `clearState: true`, without `--clear` — `false`;
 - selector text is escaped as a regular expression;
 - `tap --scroll N` becomes `scrollUntilVisible` + `tapOn`;
-- a tap by coordinates becomes a `point` in percent marked `TODO`.
+- a tap by coordinates becomes a `point` in percent marked `TODO`;
+- `wait` and `tap --expect` become `extendedWaitUntil` (`visible`, or `notVisible` for `wait --gone`)
+  with the same timeout, at least 5 s; `assert` becomes `assertVisible`. A match by id gives `id:`,
+  a substring match gives `.*text.*`.
 
 After `save-flow` run the flow once and fix the selectors.
 
@@ -103,7 +106,7 @@ and marks the cell as failed, with a hint. A frame counts as black when its midd
 ```
 
 Compose switches have no text in the tree. `adbm ui` shows them with the row label:
-`[22] View near="Block screenshots…" @958,1616 click,check`. Tap the row text.
+`[22] near="Block screenshots…" click,check`. Tap the row text.
 
 ## Parallel runs
 

@@ -36,7 +36,9 @@ Then you do not need `doctor`, API selection, `new`, frames, `diff` or `board`.
 "$ADBM" install app.apk --as after --api 35
 "$ADBM" launch <package> --api 35
 "$ADBM" ui --api 35                          # what is on the screen, as text
-"$ADBM" tap --api 35 "Sign in"
+"$ADBM" tap --api 35 "Sign in"               # prints what appeared and went away on the screen
+"$ADBM" tap --api 35 "Sign in" --expect "Email"   # one line: ok, or not found + 5 lines of the screen
+"$ADBM" wait --api 35 "Welcome" --timeout 15      # assert "<text>" — the same without waiting
 "$ADBM" type --api 35 "user@example.com"
 "$ADBM" key --api 35 back
 ```
@@ -53,6 +55,9 @@ A 1080×2400 image costs ~3350 tokens, a line of the UI tree ~15. So:
 
 1. **Navigate by text only.** Read the screen with `adbm ui` or `adbm ui --find <text>`.
    Tap by selector: `adbm tap "Close"`. Do not guess coordinates from an image.
+   After `tap` by text or `[N]` do not call `ui` again: `tap` prints what changed on the screen, and
+   `tap … --expect "<text>"` confirms the next screen in one line. A tap by `x,y` or `#N` prints
+   no change: add `--expect`. `[N]` works only while the screen of the last `ui` is still shown.
 2. **`adbm diff` decides "did it change"**, not you. It reports the percent and area of change,
    compares the status bar apart, and marks a pair `≈ apiN` when it changed the same way as on
    another API level. For frames from `adbm shot` it also reports element shifts (`"Close" ↓48 px`):
@@ -67,7 +72,8 @@ A 1080×2400 image costs ~3350 tokens, a line of the UI tree ~15. So:
    and only the part you need: `tail`, `grep`.
 
 `<run>/stats.json` counts frames taken, images sent to the main context and characters of `adbm`
-output. `adbm status` prints the estimate in tokens.
+output. `adbm status` prints the estimate in tokens. Navigation commands (`ui`, `tap`, `wait`) count
+into the current run if it was active in the last 12 hours.
 
 If the guard hook is installed (plugin, or `settings.json` per the README), it denies `Read` of a
 full-size frame from `api*/` and of a raw XML dump from `logs/`. On a denial, do what its text says.
@@ -112,8 +118,8 @@ the serial changes between launches.
 ```bash
 "$ADBM" prep --api 35 --theme dark            # animations off, status bar demo mode
 "$ADBM" launch <package> --api 35 --clear
-"$ADBM" ui --api 35                           # [3] Button "Close" id=close @540,1980 click
-"$ADBM" tap --api 35 "Close"                  # text, content-desc, id; --scroll 4 to scroll
+"$ADBM" ui --api 35                           # [3] Button "Close" id=close click; --xy adds @x,y
+"$ADBM" tap --api 35 "Close" --expect "Saved" # text, content-desc, id; --scroll 4 to scroll
 "$ADBM" shot 1-sheet --api 35 --as before     # frame into the run, not into the context
 ```
 

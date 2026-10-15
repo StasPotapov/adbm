@@ -25,7 +25,7 @@ so screenshots never enter the agent's context:
 | `adbm prep` | animations off, status bar demo mode, theme, navigation mode, font scale |
 | `adbm new <slug>`, `adbm status` | start a run folder, show the current run and counters |
 | `adbm install <apk> --as before\|after` | installs an APK on all API levels in parallel |
-| `adbm ui`, `tap`, `launch`, `type`, `key`, `swipe` | navigation by UI tree text |
+| `adbm ui`, `tap`, `wait`, `assert`, `launch`, `type`, `key`, `swipe` | navigation by UI tree text; `tap` prints what changed on the screen, `--expect` waits for the next screen |
 | `adbm shot`, `look`, `thumb`, `annotate`, `record` | frames into the run folder, a downscaled frame or crop, video |
 | `adbm run <flow.yaml> --matrix …` | a Maestro flow on all API levels in parallel, theme and navigation matrix |
 | `adbm save-flow` | manual session → Maestro flow |

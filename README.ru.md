@@ -24,7 +24,7 @@ Claude Code skill и CLI `adbm` для визуальной проверки And
 | `adbm prep` | анимации 0, demo mode статус-бара, тема, навигация, шрифт |
 | `adbm new <slug>`, `adbm status` | начать папку прогона, показать текущий прогон и счётчики |
 | `adbm install <apk> --as before\|after` | ставит APK на все API параллельно |
-| `adbm ui`, `tap`, `launch`, `type`, `key`, `swipe` | навигация по тексту дерева UI |
+| `adbm ui`, `tap`, `wait`, `assert`, `launch`, `type`, `key`, `swipe` | навигация по тексту дерева UI; `tap` печатает, что изменилось на экране, `--expect` ждёт следующий экран |
 | `adbm shot`, `look`, `thumb`, `annotate`, `record` | кадры в папку прогона, уменьшенный кадр или фрагмент, видео |
 | `adbm run <flow.yaml> --matrix …` | Maestro flow на всех API параллельно, матрица тем и навигации |
 | `adbm save-flow` | ручная сессия → Maestro flow |

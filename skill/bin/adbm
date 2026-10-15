@@ -158,14 +158,15 @@ def human_size(n):
 
 # ---------------------------------------------------------------- run dir
 
-def current_run(create=True, slug="manual", new=False):
+def current_run(create=True, slug="manual", new=False, mark=True):
     base = runs_dir()
     cur = os.path.join(base, ".current")
     if not new and os.path.exists(cur):
         name = open(cur).read().strip()
         p = os.path.join(base, name)
         if name and os.path.isdir(p):
-            USED_RUN[:] = [p]
+            if mark:
+                USED_RUN[:] = [p]
             return p
     if not create:
         return None
@@ -201,7 +202,7 @@ def project_cache():
 
 def scratch():
     """Folder for service files: the current run, outside a run the cache, so no build/adbm in the project."""
-    p = current_run(create=False) or CACHE
+    p = current_run(create=False, mark=False) or CACHE
     os.makedirs(os.path.join(p, "logs"), exist_ok=True)
     return p
 
@@ -269,12 +270,24 @@ def record_context(a, chars):
 
     A command started by `adbm record … -- <command>` writes to a log, not to the agent: not counted.
     """
-    if not USED_RUN or os.environ.get("ADBM_NO_STATS") or not os.path.isdir(USED_RUN[0]):
+    if os.environ.get("ADBM_NO_STATS"):
         return
     try:
-        stats_add(USED_RUN[0], context_chars=chars, commands=1, chars_by_command={a.cmd: chars})
+        run = USED_RUN[0] if USED_RUN else fresh_run()
+        if run and os.path.isdir(run):
+            stats_add(run, context_chars=chars, commands=1, chars_by_command={a.cmd: chars})
     except Exception:
         pass
+
+
+def fresh_run(hours=12):
+    """The current run if it was active less than `hours` ago: navigation between frames belongs to it."""
+    run = current_run(create=False, mark=False)
+    if not run:
+        return None
+    last = max((os.path.getmtime(os.path.join(run, f)) for f in ("stats.json", ".")
+                if os.path.exists(os.path.join(run, f))), default=0)
+    return run if time.time() - last < hours * 3600 else None
 
 
 def session_log(entry):
@@ -480,8 +493,13 @@ def parse_nodes(xml, include_system=False):
     return nodes
 
 
-def fmt_node(nd):
-    s = f"[{nd['i']}] {nd['cls']}"
+PLAIN = {"TextView", "View", "ViewGroup", "FrameLayout", "LinearLayout", "RelativeLayout", "ConstraintLayout"}
+
+
+def fmt_node(nd, full=True):
+    """One node as a line. full: class always and @x,y (files, ui_diff); else compact (agent output)."""
+    show_cls = full or nd["cls"] not in PLAIN
+    s = f"[{nd['i']}]" + (f" {nd['cls']}" if show_cls else "")
     if nd["text"]:
         s += f' "{trunc(nd["text"])}"'
     if nd["desc"] and nd["desc"] != nd["text"]:
@@ -490,7 +508,8 @@ def fmt_node(nd):
         s += f" id={nd['id']}"
     if nd.get("near"):
         s += f' near="{trunc(nd["near"], 40)}"'
-    s += f" @{nd['cx']},{nd['cy']}"
+    if full:
+        s += f" @{nd['cx']},{nd['cy']}"
     if nd["flags"]:
         s += " " + ",".join(nd["flags"])
     return s
@@ -890,8 +909,7 @@ def cmd_install(a):
 def cmd_ui(a):
     api, s = pick(a)[0]
     xml, nodes = ui_snapshot(s, a.all)
-    os.makedirs(CACHE, exist_ok=True)
-    json.dump(nodes, open(os.path.join(CACHE, f"ui-{s}.json"), "w"), ensure_ascii=False)
+    save_ui_cache(s, nodes)
     open(os.path.join(scratch(), "logs", f"ui-api{api}-last.xml"), "w").write(xml)
     if a.find:
         hit = find_nodes(nodes, a.find)
@@ -899,11 +917,11 @@ def cmd_ui(a):
             near = similar_nodes(nodes, a.find)[:5]
             print(f'not found: "{a.find}"' + (" · similar:" if near else f" · nothing similar, {len(nodes)} nodes — adbm ui"))
             for nd in near:
-                print("  " + fmt_node(nd))
+                print("  " + fmt_node(nd, a.xy))
             return 1
         nodes = hit
     for nd in nodes[: a.limit]:
-        print(fmt_node(nd))
+        print(fmt_node(nd, a.xy))
     if len(nodes) > a.limit:
         print(f"… {len(nodes) - a.limit} more, narrow with --find")
     w, h = screen_size(s)
@@ -923,20 +941,25 @@ def cmd_tap(a):
         tap_xy(s, x, y)
         session_log({"api": api, "op": "tap_xy", "x": x, "y": y, "screen": screen_size(s)})
         print(f"{api}: tap {x},{y}")
-        return 0
+        return after_tap(api, s, a, None)
     if sel.startswith("#"):
-        return annotate_tap(api, s, sel[1:])
+        return annotate_tap(api, s, sel[1:], a)
     if a.index is not None or re.fullmatch(r"\[\d+\]", sel):
         idx = a.index if a.index is not None else int(sel[1:-1])
         try:
-            nodes = json.load(open(os.path.join(CACHE, f"ui-{s}.json")))
-            nd = nodes[idx]
+            nd = json.load(open(os.path.join(CACHE, f"ui-{s}.json")))[idx]
         except Exception:
             die("no fresh `adbm ui` for this device")
+        # the index comes from the last `adbm ui`: tap only if that node is still on the screen
+        _, nodes = ui_snapshot(s)
+        same = [n for n in nodes if (n["text"], n["desc"], n["id"], n["bounds"]) == (nd["text"], nd["desc"], nd["id"], nd["bounds"])]
+        if not same:
+            die(f"{fmt_node(nd, False)} is no longer on the screen — run adbm ui again")
+        nd = same[0]
         tap_xy(s, nd["cx"], nd["cy"])
         session_log({"api": api, "op": "tap", "text": nd["text"], "desc": nd["desc"], "id": nd["id"]})
-        print(f"{api}: tap {fmt_node(nd)}")
-        return 0
+        print(f"{api}: tap {fmt_node(nd, False)}")
+        return after_tap(api, s, a, nodes)
     scrolls = 0
     nodes = []
     a.retries = max(1, a.retries)
@@ -956,17 +979,123 @@ def cmd_tap(a):
             session_log({"api": api, "op": "tap", "by": key, "sel": sel, "scrolled": scrolls,
                          "text": nd["text"], "desc": nd["desc"], "id": nd["id"]})
             more = f" (matches {len(hit)}, took {min(a.nth, len(hit) - 1)})" if len(hit) > 1 else ""
-            print(f"{api}: tap {fmt_node(nd)}{more}")
-            if a.wait:
-                time.sleep(a.wait)
-            return 0
+            print(f"{api}: tap {fmt_node(nd, False)}{more}")
+            return after_tap(api, s, a, nodes)
         time.sleep(1)
     near = similar_nodes(nodes, sel)[:8]
     print(f'{api}: not found "{sel}" (tries {a.retries}, scrolls {scrolls}). '
           + ("Similar:" if near else f"Nothing similar, {len(nodes)} nodes on screen — see adbm ui"))
     for nd in near:
-        print("  " + fmt_node(nd))
+        print("  " + fmt_node(nd, False))
     return 1
+
+
+def node_keys(nodes):
+    return [n["text"] or n["desc"] or n.get("near") or n["id"] for n in nodes if n["text"] or n["desc"] or n["id"]]
+
+
+def screen_change(before, after):
+    """'+3 "A", "B", "C"; -1 "D"' — texts that appeared and went away, or 'screen unchanged'."""
+    b, a = node_keys(before), node_keys(after)
+    plus = [k for k in a if k not in b]
+    minus = [k for k in b if k not in a]
+    if not plus and not minus:
+        return "screen unchanged"
+
+    def part(sign, ks):
+        names = ", ".join(f'"{trunc(k, 30)}"' for k in ks[:4])
+        return f"{sign}{len(ks)} {names}" + ("…" if len(ks) > 4 else "")
+    return "; ".join(part(sg, ks) for sg, ks in (("+", plus), ("-", minus)) if ks)
+
+
+def wait_for(serial, sel, timeout, gone=False, before=None):
+    """Poll the tree until sel is on the screen (or gone). Returns (ok, nodes, hits).
+
+    A failed dump (uiautomator busy during an animation) is retried until the timeout.
+    With `before` (the screen before a tap) a text that was already there counts only after the screen changed.
+    """
+    t0 = time.time()
+    nodes, hit = [], []
+    stale = before is not None and bool(find_nodes(before, sel))
+    while True:
+        try:
+            _, nodes = ui_snapshot(serial)
+            hit = find_nodes(nodes, sel)
+            changed = not stale or node_keys(nodes) != node_keys(before)
+            if bool(hit) != gone and changed:
+                return True, nodes, hit
+        except SystemExit:
+            pass
+        if time.time() - t0 >= timeout:
+            return False, nodes, hit
+        time.sleep(0.5)
+
+
+def match_kind(nd, sel):
+    """How a node matched a selector, for save-flow: ('text'|'id', regex or id)."""
+    if nd["id"] == sel or nd["rid"] == sel:
+        return "id", nd["id"]
+    if sel in (nd["text"], nd["desc"]):
+        return "text", re.escape(sel)
+    return "text", ".*" + re.escape(sel) + ".*"
+
+
+def screen_brief(nodes, n=5):
+    if not nodes:
+        return "  (no UI tree: uiautomator did not answer)"
+    return "\n".join("  " + fmt_node(nd, False) for nd in nodes[:n]) + (
+        f"\n  … {len(nodes) - n} more — adbm ui" if len(nodes) > n else "")
+
+
+def save_ui_cache(serial, nodes):
+    os.makedirs(CACHE, exist_ok=True)
+    json.dump(nodes, open(os.path.join(CACHE, f"ui-{serial}.json"), "w"), ensure_ascii=False)
+
+
+def after_tap(api, s, a, before):
+    """After a tap: --expect waits for a text, otherwise a short diff of the screen. Returns the exit code."""
+    if a.expect:
+        time.sleep(min(a.wait, 0.5))
+        ok, nodes, hit = wait_for(s, a.expect, a.timeout, before=before)
+        if ok:
+            kind, val = match_kind(hit[0], a.expect)
+            session_log({"api": api, "op": "wait", "by": kind, "value": val, "timeout": a.timeout})
+        if ok:
+            print(f'  ok "{a.expect}" · {fmt_node(hit[0], False)}')
+            return 0
+        print(f'  not found "{a.expect}" in {a.timeout:g} s; screen:\n' + screen_brief(nodes))
+        return 1
+    if a.wait:
+        time.sleep(a.wait)
+    if before is None or a.quiet:
+        return 0
+    try:
+        _, nodes = ui_snapshot(s)
+    except SystemExit:
+        return 0
+    print("  → " + screen_change(before, nodes))
+    return 0
+
+
+def cmd_wait(a):
+    api, s = pick(a)[0]
+    ok, nodes, hit = wait_for(s, a.text, a.timeout, a.gone)
+    if ok:
+        kind, val = ("text", re.escape(a.text)) if a.gone else match_kind(hit[0], a.text)
+        session_log({"api": api, "op": "assert" if getattr(a, "is_assert", False) else "wait",
+                     "by": kind, "value": val, "timeout": a.timeout, "gone": a.gone})
+    if ok:
+        print(f'{api}: gone "{a.text}"' if a.gone else f"{api}: found {fmt_node(hit[0], False)}"
+              + (f" (matches {len(hit)})" if len(hit) > 1 else ""))
+        return 0
+    what = "still on screen" if a.gone else "not found"
+    print(f'{api}: {what} "{a.text}" after {a.timeout:g} s; screen:\n' + screen_brief(nodes))
+    return 1
+
+
+def cmd_assert(a):
+    a.timeout, a.gone, a.is_assert = 0, False, True
+    return cmd_wait(a)
 
 
 def cmd_launch(a):
@@ -1163,7 +1292,7 @@ def cmd_thumb(a):
     return 0
 
 
-def annotate_tap(api, s, n):
+def annotate_tap(api, s, n, a):
     acli = shutil.which("android")
     if not acli:
         die("no Android CLI — `adbm setup --android-cli --yes`, or tap by text from `adbm ui`")
@@ -1180,7 +1309,7 @@ def annotate_tap(api, s, n):
     tap_xy(s, x, y)
     session_log({"api": api, "op": "tap_xy", "x": x, "y": y, "screen": screen_size(s), "note": f"annotate #{n}"})
     print(f"{api}: tap #{n} → {x},{y}")
-    return 0
+    return after_tap(api, s, a, None)
 
 
 def cmd_annotate(a):
@@ -1884,6 +2013,13 @@ def cmd_save_flow(a):
                        f"# TODO: key {e['key']} has no Maestro pressKey equivalent"))
         elif op == "swipe":
             out += ["- swipe:", f'    direction: {e["direction"].upper()}']
+        elif op in ("wait", "assert"):
+            sel = f"      {e.get('by', 'text')}: {json.dumps(e.get('value', ''), ensure_ascii=False)}"
+            if op == "assert":
+                out += ["- assertVisible:", sel[2:]]
+            else:
+                out += ["- extendedWaitUntil:", "    notVisible:" if e.get("gone") else "    visible:", sel,
+                        f"    timeout: {int(1000 * max(e.get('timeout') or 5, 5))}"]
         elif op == "shot":
             n += 1
             out += ["- waitForAnimationToEnd", f'- takeScreenshot: "{e["name"]}"']
@@ -2192,7 +2328,14 @@ def main():
     p = add("ui", cmd_ui, "compact UI tree as text", "one")
     p.add_argument("--find")
     p.add_argument("--all", action="store_true", help="include system UI")
-    p.add_argument("--limit", type=int, default=60)
+    p.add_argument("--limit", type=int, default=40)
+    p.add_argument("--xy", action="store_true", help="classes and @x,y coordinates of every node")
+    p = add("wait", cmd_wait, "wait until a text (text, content-desc, id) is on the screen; exit code 1 on timeout", "one")
+    p.add_argument("text")
+    p.add_argument("--gone", action="store_true", help="wait until the text is gone")
+    p.add_argument("--timeout", type=float, default=10)
+    p = add("assert", cmd_assert, "is a text on the screen now: exit code 0 or 1", "one")
+    p.add_argument("text")
     p = add("tap", cmd_tap, 'tap by text, content-desc, id; "x,y"; "[N]" from ui; "#N" from annotate', "one")
     p.add_argument("selector")
     p.add_argument("--nth", type=int, default=0)
@@ -2200,6 +2343,9 @@ def main():
     p.add_argument("--retries", type=int, default=6)
     p.add_argument("--scroll", type=int, default=0, help="how many times to scroll down if not found")
     p.add_argument("--wait", type=float, default=0.8, help="pause after the tap, s")
+    p.add_argument("--expect", metavar="TEXT", help="after the tap wait for this text: one line ok / not found")
+    p.add_argument("--timeout", type=float, default=5, help="for --expect, s")
+    p.add_argument("--quiet", action="store_true", help="no screen diff after the tap")
     p = add("launch", cmd_launch, "launch an app", "multi")
     p.add_argument("package")
     p.add_argument("--clear", action="store_true", help="pm clear before launch")
