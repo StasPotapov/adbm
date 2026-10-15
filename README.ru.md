@@ -43,7 +43,7 @@ ADBM не заменяет эти инструменты, а связывает 
 | [Android SDK](https://developer.android.com/tools): adb, emulator, sdkmanager, avdmanager | [Android SDK License Agreement](https://developer.android.com/studio/terms) от Google; открытые части SDK — под своими лицензиями | связь с устройством, эмуляторы, скачивание образов |
 | [Pillow](https://python-pillow.github.io) | MIT-CMU, открытый | пиксельный дифф, кропы, коллаж |
 | [FFmpeg](https://ffmpeg.org) | LGPL 2.1+, открытый; сборка с `--enable-gpl` — GPL 2+ | кадры из видео для `adbm record` |
-| [Android CLI](https://developer.android.com/tools/agents/android-cli), необязательный | закрытый бинарник Google, лицензия не опубликована; собирает данные об использовании, `adbm` выключает это флагом `--no-metrics` | нужен для экранов без дерева UI: игры, Canvas, WebView без доступности. `adbm annotate` рисует на кадре номера найденных элементов, `adbm tap '#7'` нажимает по номеру. Без Android CLI всё остальное работает, а на таком экране агент нажимает по координатам с кадра `adbm look`. Поставить: `adbm setup --android-cli --yes` |
+| [Android CLI](https://developer.android.com/tools/agents/android-cli), необязательный | закрытый бинарник Google, лицензия не опубликована; собирает данные об использовании, `adbm` выключает это флагом `--no-metrics` | нужен для экранов без дерева UI: игры, Canvas, WebView без доступности. `adbm annotate` рисует на кадре номера найденных элементов, `adbm tap '#7'` нажимает по номеру. Без Android CLI всё остальное работает, а на таком экране агент нажимает по координатам с кадра `adbm look`. Если агент встретит такой экран, он сам предложит поставить Android CLI и поставит только после твоего согласия: `adbm setup --android-cli --yes` |
 
 ## Установка
 

@@ -39,7 +39,8 @@ which one the task is about.
 
 Other input: `type`, `clear-field`, `key back|home|enter|hide-keyboard`, `swipe up|down|x0,y0,x1,y1`,
 `tap --long|--double`, `tap "[N]"`, `rotate`. Switches without a label show as `near="<row text>"`:
-tap the row text. A screen without a tree (Canvas, a game): `annotate` and `tap '#N'` through Android CLI.
+tap the row text. A screen without a tree (Canvas, a game): `annotate` and `tap '#N'` through Android CLI. If it is not installed,
+offer `adbm setup --android-cli --yes` with the reason and run it only after a clear yes; until then tap by `x,y` from `look`.
 `shot` saves the UI tree next to the frame, so `adbm diff` reports element shifts (`"Close" ↓48 px`).
 
 A manual check grew — `adbm save-flow <slug> --api 35` turns the journal of `launch`, `tap`, `type`,
