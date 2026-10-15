@@ -136,8 +136,24 @@ next to its target). It changes Claude Code for every project, so it runs only w
 }
 ```
 
-**Subagent models.** The `adbm-eyes` subagent runs on `haiku` with effort `low` by default.
-On the real run below it gave the same verdict as `sonnet`, and effort `high` did not help. To change the model or effort, create a settings file and edit it:
+**Measuring a session.** `tools/measure-session.py <transcript.jsonl>` prints what a Claude Code
+session spent on `adbm`: characters of output per command and images read.
+`adbm status` prints the same estimate for the current run from `stats.json`.
+
+## Subagent model
+
+The `adbm-eyes` subagent runs on `haiku` with effort `low` by default.
+
+A strong model is not needed here: deterministic checks do the main work. `adbm diff` finds the changed
+pairs, the area and the changed percent without a model, and compares the status bar apart. The model only
+explains the result: it writes what exactly broke and marks the pairs with a problem. If the model is wrong,
+the changed pair still stays on the board, and a person sees it.
+
+Haiku 5.5 handles this. On the MyPassBox run above it gave the same verdict as `sonnet`:
+6 PROBLEM and 2 EXPECTED. Haiku 5.5 input costs $0.10 per 1M tokens, Sonnet 5.5 input costs $2.
+Effort `high` did not help on this run: the subagent spent more tokens and missed the light navigation bar.
+
+If you need another price or accuracy, set the model and effort in a settings file:
 
 ```bash
 adbm config --init            # ~/.config/adbm/config.ini ($XDG_CONFIG_HOME if set), for all projects
@@ -151,15 +167,12 @@ model = sonnet    # sonnet, opus, haiku, fable; empty — the default of the age
 effort = medium   # low, medium, high, xhigh, max; empty — the usual effort
 ```
 
-The project file overrides the user file. If the `adbm-eyes` type is not installed,
-the skill starts `general-purpose`, and an empty `model` there means the main session's model. Before it starts the subagent, the skill runs `adbm config`
-and passes `model` and `effort` to the Agent tool. This works only in Claude Code.
-If you use another tool (Codex and others), adapt the "The adbm-eyes subagent" section
-of `skill/SKILL.md` and `skill/agents/adbm-eyes.md` to it.
+The project file overrides the user file. Before it starts the subagent, the skill runs `adbm config`
+and passes `model` and `effort` to the Agent tool. If the `adbm-eyes` type is not installed,
+the skill starts `general-purpose`, and an empty `model` there means the main session's model.
 
-**Measuring a session.** `tools/measure-session.py <transcript.jsonl>` prints what a Claude Code
-session spent on `adbm`: characters of output per command and images read.
-`adbm status` prints the same estimate for the current run from `stats.json`.
+The settings work only in Claude Code. If you use another tool (Codex and others), adapt
+the "The adbm-eyes subagent" section of `skill/SKILL.md` and `skill/agents/adbm-eyes.md` to it.
 
 ## Tests
 
