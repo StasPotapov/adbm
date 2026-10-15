@@ -321,6 +321,22 @@ def screen_size(serial):
     return tuple(map(int, m[-1])) if m else (0, 0)
 
 
+def frame_problem(path):
+    """Пустой или битый PNG → 'broken', почти сплошной чёрный → 'black', иначе None."""
+    try:
+        if os.path.getsize(path) == 0:
+            return "broken"
+        from PIL import Image, ImageStat
+        with Image.open(path) as im:
+            st = ImageStat.Stat(im.convert("L").resize((108, 240)))
+        return "black" if st.mean[0] < 3 and st.stddev[0] < 16 else None
+    except Exception:
+        return "broken"
+
+
+SECURE_HINT = "кадр чёрный — вероятно, окно с FLAG_SECURE (защита от скриншотов): выключи её в приложении"
+
+
 def screencap(serial):
     code, data, err = adb(serial, "exec-out", "screencap", "-p", timeout=30, binary=True)
     if code != 0 or not data.startswith(b"\x89PNG"):
@@ -367,13 +383,21 @@ def parse_nodes(xml, include_system=False):
                                 ("long", "long-clickable")) if a.get(k) == "true"]
         if a.get("enabled") == "false":
             flags.append("disabled")
-        if not (text or desc or (rid and set(flags) & {"click", "scroll", "check"}) or "scroll" in flags):
+        if not (text or desc or (rid and set(flags) & {"click", "scroll", "check"}) or set(flags) & {"scroll", "check"}):
             continue
         nodes.append({
             "cls": a.get("class", "").split(".")[-1],
             "text": text, "desc": desc, "id": rid.split(":id/")[-1] if rid else "", "rid": rid,
             "bounds": [x0, y0, x1, y1], "cx": (x0 + x1) // 2, "cy": (y0 + y1) // 2, "flags": flags,
         })
+    # у переключателей Compose нет текста: подпись берём у ближайшего текста в той же строке
+    texts = [n for n in nodes if n["text"]]
+    for nd in nodes:
+        if "check" in nd["flags"] and not (nd["text"] or nd["desc"] or nd["id"]):
+            x0, y0, x1, y1 = nd["bounds"]
+            row = [t for t in texts if y0 - 20 <= t["cy"] <= y1 + 20 and t["bounds"][0] < x1]
+            if row:
+                nd["near"] = min(row, key=lambda t: abs(t["cy"] - nd["cy"]) * 4 + abs(t["cx"] - nd["cx"]))["text"]
     for i, nd in enumerate(nodes):
         nd["i"] = i
     return nodes
@@ -387,6 +411,8 @@ def fmt_node(nd):
         s += f' desc="{trunc(nd["desc"])}"'
     if nd["id"]:
         s += f" id={nd['id']}"
+    if nd.get("near"):
+        s += f' near="{trunc(nd["near"], 40)}"'
     s += f" @{nd['cx']},{nd['cy']}"
     if nd["flags"]:
         s += " " + ",".join(nd["flags"])
@@ -928,6 +954,8 @@ def cmd_shot(a):
         data = screencap(s)
         p = frame_path(run, api, version, a.group, a.name)
         open(p, "wb").write(data)
+        if frame_problem(p) == "black":
+            print(f"{api}: {SECURE_HINT}", file=sys.stderr)
         if not a.no_ui:
             try:
                 _, nodes = ui_snapshot(s)
@@ -1107,8 +1135,19 @@ def cmd_run(a):
             log = o + "\n" + e
             open(log_p, "w").write(" ".join(shlex.quote(c) for c in cmd) + "\n\n" + log)
             shots = sorted(glob.glob(os.path.join(out, "**", "takeScreenshot", "*.png"), recursive=True))
+            bad = {"broken": [], "black": []}
+            kept = []
             for p in shots:
-                shutil.move(p, frame_path(run, api, version, group, os.path.basename(p)))
+                prob = frame_problem(p)
+                if prob == "broken":
+                    bad["broken"].append(os.path.basename(p))
+                    continue
+                dst = frame_path(run, api, version, group, os.path.basename(p))
+                shutil.move(p, dst)
+                kept.append(dst)
+                if prob == "black":
+                    bad["black"].append(os.path.basename(p))
+            shots = kept
             if code != 0:
                 crash = adb(s, "logcat", "-b", "crash", "-d", "-t", "200")[1]
                 if crash.strip():
@@ -1120,9 +1159,14 @@ def cmd_run(a):
                 except SystemExit:
                     pass
                 why = maestro_failure(log) + f" · экран: logs/ui-fail-{tag}.txt"
+                if "Screenshot returned null" in log:
+                    why += " · " + SECURE_HINT
                 if crash.strip():
                     why += " · есть crash в logs/crash-" + tag + ".txt"
                 res.append((cell, "fail", why, len(shots), log_p))
+            elif bad["black"]:
+                res.append((cell, "fail", f"чёрных кадров {len(bad['black'])} из {len(shots)} · " + SECURE_HINT,
+                            len(shots), log_p))
             else:
                 res.append((cell, "ok", f"{time.time() - t0:.0f} с", len(shots), log_p))
             shutil.rmtree(out, ignore_errors=True)
@@ -1163,6 +1207,9 @@ def scan_run(run):
         parts = os.path.relpath(p, run).split(os.sep)
         m = re.fullmatch(r"api(\d+)", parts[0])
         if not m:
+            continue
+        if frame_problem(p) == "broken":
+            print(f"пропуск битого кадра: {os.path.relpath(p, run)}", file=sys.stderr)
             continue
         api = int(m.group(1))
         name = os.path.splitext(parts[-1])[0]
