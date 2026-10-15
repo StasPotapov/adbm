@@ -20,6 +20,7 @@ import platform
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -735,15 +736,19 @@ def cmd_prep(a):
     return 0
 
 
-def apk_package(apk):
+def apk_info(apk):
+    """{'package', 'min_sdk', 'target_sdk'} из aapt dump badging; чего нет — None."""
+    info = {"package": None, "min_sdk": None, "target_sdk": None}
     root = sdk_root()
     tools = sorted(glob.glob(os.path.join(root, "build-tools", "*", "aapt"))) if root else []
     if tools:
         _, out, _ = sh([tools[-1], "dump", "badging", apk], timeout=60)
-        m = re.search(r"package: name='([^']+)'", out)
-        if m:
-            return m.group(1)
-    return None
+        for key, rx in (("package", r"package: name='([^']+)'"), ("min_sdk", r"^sdkVersion:'(\d+)'"),
+                        ("target_sdk", r"^targetSdkVersion:'(\d+)'")):
+            m = re.search(rx, out, re.M)
+            if m:
+                info[key] = int(m.group(1)) if key != "package" else m.group(1)
+    return info
 
 
 def cmd_install(a):
@@ -752,7 +757,14 @@ def cmd_install(a):
     targets = pick(a, multi=True)
     run = current_run(create=False) or CACHE
     os.makedirs(run, exist_ok=True)
-    pkg = apk_package(a.apk)
+    info = apk_info(a.apk)
+    pkg = info["package"]
+    low = [t for t in targets if info["min_sdk"] and t[0] < info["min_sdk"]]
+    for api, _ in low:
+        print(f"{api}: пропуск — у APK minSdk {info['min_sdk']}")
+    targets = [t for t in targets if t not in low]
+    if not targets:
+        die(f"нет устройств с API ≥ {info['min_sdk']} (minSdk APK)")
     h = hashlib.sha1()
     with open(a.apk, "rb") as f:
         for chunk in iter(lambda: f.read(1 << 20), b""):
@@ -770,13 +782,15 @@ def cmd_install(a):
         meta = json.load(open(meta_p))
     except Exception:
         meta = {}
-    meta[a.as_] = {"apk": os.path.abspath(a.apk), "package": pkg, "sha1": sha}
+    meta[a.as_] = {"apk": os.path.abspath(a.apk), "package": pkg, "sha1": sha,
+                   "min_sdk": info["min_sdk"], "target_sdk": info["target_sdk"]}
     json.dump(meta, open(meta_p, "w"), ensure_ascii=False, indent=1)
     bad = 0
     for (api, s), (ok, msg) in zip(targets, res):
         print(f"{api}: " + ("установлен" if ok else f"ошибка — {msg}"))
         bad += not ok
-    print(f"{a.as_}: {os.path.basename(a.apk)} {pkg or ''} sha1 {sha}")
+    sdk = f" minSdk {info['min_sdk']} targetSdk {info['target_sdk']}" if info["min_sdk"] else ""
+    print(f"{a.as_}: {os.path.basename(a.apk)} {pkg or ''}{sdk} sha1 {sha}")
     with _lock:
         open(os.path.join(run, ".as"), "w").write(a.as_)
     return 1 if bad else 0
@@ -1080,6 +1094,101 @@ def cell_group(cell, keys, extra=""):
     return "/".join(parts)
 
 
+def run_watched(cmd, stall, total):
+    """Запуск с двумя сторожами: нет вывода дольше stall с или всё дольше total с — убить группу процессов.
+
+    Возвращает (код, вывод, причина): причина None, 'stall' или 'timeout'.
+    """
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
+    lines, last = [], [time.time()]
+
+    def reader():
+        for raw in iter(p.stdout.readline, b""):
+            lines.append(raw.decode("utf-8", "replace"))
+            last[0] = time.time()
+
+    th = threading.Thread(target=reader, daemon=True)
+    th.start()
+    t0, reason = time.time(), None
+    while p.poll() is None:
+        time.sleep(1)
+        now = time.time()
+        if now - last[0] > stall:
+            reason = "stall"
+        elif now - t0 > total:
+            reason = "timeout"
+        if reason:
+            # maestro — shell-обёртка над JVM: убиваем всю группу, иначе java переживёт обёртку
+            for sig in (signal.SIGTERM, signal.SIGKILL):
+                try:
+                    os.killpg(p.pid, sig)
+                except ProcessLookupError:
+                    break
+                try:
+                    p.wait(5)
+                    break
+                except subprocess.TimeoutExpired:
+                    pass
+            break
+    th.join(5)
+    return p.returncode, "".join(lines), reason
+
+
+def watch_limits(flow, api_list, stall, timeout):
+    """Пороги сторожа: из флагов, иначе из flow и истории прогонов. Возвращает (stall, timeout, пояснение)."""
+    notes = []
+    if stall is None:
+        waits = [int(x) for x in re.findall(r"^\s*timeout:\s*(\d+)", open(flow).read(), re.M)]
+        longest = max(waits) // 1000 if waits else 0
+        stall = max(45, longest + 20)
+        notes.append(f"тишина {stall} с = самое долгое ожидание во flow {longest} с + 20, не меньше 45")
+    else:
+        notes.append(f"тишина {stall} с (флаг)")
+    if timeout is None:
+        hist = load_durations().get(os.path.abspath(flow), {})
+        last = [hist[str(a)] for a in api_list if str(a) in hist]
+        if last:
+            timeout = max(90, int(2 * max(last)))
+            notes.append(f"ячейка {timeout} с = 2 × прошлый прогон {max(last):.0f} с, не меньше 90")
+        else:
+            timeout = 600
+            notes.append("ячейка 600 с (истории прогонов нет)")
+    else:
+        notes.append(f"ячейка {timeout} с (флаг)")
+    return stall, timeout, "сторож: " + "; ".join(notes)
+
+
+def load_durations():
+    try:
+        return json.load(open(os.path.join(CACHE, "durations.json")))
+    except Exception:
+        return {}
+
+
+def save_duration(flow, api, seconds):
+    with _lock:
+        d = load_durations()
+        d.setdefault(os.path.abspath(flow), {})[str(api)] = round(seconds, 1)
+        os.makedirs(CACHE, exist_ok=True)
+        json.dump(d, open(os.path.join(CACHE, "durations.json"), "w"), indent=1)
+
+
+ANR = re.compile(r"isn.t responding|не отвечает|keeps stopping|has stopped|остановлено|снова произошла ошибка", re.I)
+
+
+def device_diagnosis(serial, nodes):
+    """Что случилось с устройством: офлайн, окно ANR/краша, текущее окно."""
+    code, out, _ = sh([adb_bin(), "-s", serial, "get-state"], timeout=10)
+    if code != 0 or out.strip() != "device":
+        return f"устройство {serial} не отвечает ({out.strip() or 'нет ответа'}) — adbm devices, перезапуск эмулятора"
+    hit = [n["text"] or n["desc"] for n in nodes if ANR.search(n["text"] + " " + n["desc"])]
+    if hit:
+        return f"на экране системный диалог: «{trunc(hit[0], 50)}» — приложение зависло или упало"
+    focus = ashell(serial, "dumpsys window | grep -m1 mCurrentFocus", timeout=15)
+    m = re.search(r"\S+/\S+(?=})", focus)
+    return f"в фокусе {m.group(0) if m else focus.strip()[:80]}"
+
+
 def maestro_failure(log):
     lines = log.splitlines()
     bad = [l.strip() for l in lines if re.search(r"FAILED|not found|Assertion|Exception|Error:", l)]
@@ -1099,9 +1208,10 @@ def cmd_run(a):
     run = new_run(slug) if a.new else current_run(slug=slug)
     version = default_as(run, a)
     cells, keys = parse_matrix(a.matrix)
-    app = None
+    app = min_sdk = None
     try:
-        app = json.load(open(os.path.join(run, "builds.json"))).get(version, {}).get("package")
+        build = json.load(open(os.path.join(run, "builds.json"))).get(version, {})
+        app, min_sdk = build.get("package"), build.get("min_sdk")
     except Exception:
         pass
     m = re.search(r"^appId:\s*(\S+)", open(flow).read(), re.M)
@@ -1112,6 +1222,8 @@ def cmd_run(a):
 
     def one(api, s):
         res = []
+        if min_sdk and api < min_sdk:
+            return [({}, "skip", f"у сборки {version} minSdk {min_sdk}", 0)]
         for cell in cells:
             if cell.get("nav") == "gestural" and api < 29:
                 res.append((cell, "skip", f"gestural нет на API {api}", 0))
@@ -1131,8 +1243,7 @@ def cmd_run(a):
             log_p = os.path.join(run, "logs", f"run-{version}-{tag}.log")
             cmd = [mae, "--device", s, "test", flow, "--test-output-dir", out, "--no-ansi"] + envs
             t0 = time.time()
-            code, o, e = sh(cmd, timeout=a.timeout)
-            log = o + "\n" + e
+            code, log, hung = run_watched(cmd, stall, timeout)
             open(log_p, "w").write(" ".join(shlex.quote(c) for c in cmd) + "\n\n" + log)
             shots = sorted(glob.glob(os.path.join(out, "**", "takeScreenshot", "*.png"), recursive=True))
             bad = {"broken": [], "black": []}
@@ -1148,17 +1259,24 @@ def cmd_run(a):
                 if prob == "black":
                     bad["black"].append(os.path.basename(p))
             shots = kept
-            if code != 0:
+            if code != 0 or hung:
                 crash = adb(s, "logcat", "-b", "crash", "-d", "-t", "200")[1]
                 if crash.strip():
                     open(os.path.join(run, "logs", f"crash-{tag}.txt"), "w").write(crash)
+                nodes = []
                 try:
                     _, nodes = ui_snapshot(s)
                     open(os.path.join(run, "logs", f"ui-fail-{tag}.txt"), "w").write(
                         "\n".join(fmt_node(n) for n in nodes) + "\n")
                 except SystemExit:
                     pass
-                why = maestro_failure(log) + f" · экран: logs/ui-fail-{tag}.txt"
+                steps = [l.strip() for l in log.splitlines() if l.strip()]
+                if hung:
+                    limit = f"нет вывода {stall} с" if hung == "stall" else f"дольше {timeout} с"
+                    why = f"ЗАВИС ({limit}) после шага «{trunc(steps[-1], 60) if steps else '—'}»"
+                else:
+                    why = maestro_failure(log)
+                why += f" · {device_diagnosis(s, nodes)} · экран: logs/ui-fail-{tag}.txt"
                 if "Screenshot returned null" in log:
                     why += " · " + SECURE_HINT
                 if crash.strip():
@@ -1168,12 +1286,15 @@ def cmd_run(a):
                 res.append((cell, "fail", f"чёрных кадров {len(bad['black'])} из {len(shots)} · " + SECURE_HINT,
                             len(shots), log_p))
             else:
+                save_duration(flow, api, time.time() - t0)
                 res.append((cell, "ok", f"{time.time() - t0:.0f} с", len(shots), log_p))
             shutil.rmtree(out, ignore_errors=True)
         return res
 
+    stall, timeout, why = watch_limits(flow, [t[0] for t in targets], a.stall, a.timeout)
     print(f"прогон {rel(run)} · {version} · {os.path.basename(flow)} · API {','.join(str(t[0]) for t in targets)}"
           + (f" · ячеек {len(cells)}" if len(cells) > 1 else ""))
+    print(why)
     results = parallel(targets, one)
     total = fails = 0
     for (api, _), res in zip(targets, results):
@@ -1521,7 +1642,7 @@ def collage(frames, keys, apis, out, max_side=2000, verdicts=None):
         group, name = k
         label = (group + "/" if group else "") + name
         v = (verdicts or {}).get(k)
-        color = (230, 230, 230) if not v else ((120, 210, 120) if v == "PASS" else (240, 110, 110))
+        color = VERDICT_COLOR.get(v, (230, 230, 230))
         dr.text((bx + gap, by + 5), trunc(label, max(10, bw // 8)) + (f"  {v}" if v else ""), fill=color, font=font)
         for j, api in enumerate(apis):
             x = bx + gap + j * (per * w + (per - 1) * 2 + gap)
@@ -1543,21 +1664,32 @@ def collage(frames, keys, apis, out, max_side=2000, verdicts=None):
     return W, H
 
 
+VERDICTS = {"EXPECTED": "expected", "PROBLEM": "problem", "REVIEW": "review",
+            "ОЖИДАЕМО": "expected", "ПРОБЛЕМА": "problem", "ПОСМОТРЕТЬ": "review",
+            "PASS": "expected", "FAIL": "problem"}
+VERDICT_RANK = {"expected": 0, "review": 1, "problem": 2}
+VERDICT_COLOR = {"expected": (120, 210, 120), "review": (240, 190, 80), "problem": (240, 110, 110)}
+
+
 def read_verdicts(run):
-    """Строки notes.md вида `PASS api35/группа/имя — …` → {(group,name): PASS|FAIL}."""
+    """Строки notes.md вида `ПРОБЛЕМА api35/группа/имя — …` → {(group,name): вердикт}.
+
+    Ключи — expected/problem/review; русские слова и PASS/FAIL из старых notes.md — синонимы.
+    """
     res = {}
     p = os.path.join(run, "notes.md")
     if not os.path.exists(p):
         return res, ""
     text = open(p).read()
     for line in text.splitlines():
-        m = re.match(r"\s*[-*]?\s*(PASS|FAIL)\s+(?:api\d+/)?(\S+)", line)
+        m = re.match(r"\s*[-*]?\s*(" + "|".join(VERDICTS) + r")\s+(?:api\d+/)?(\S+)", line, re.I)
         if m:
+            v = VERDICTS[m.group(1).upper()]
             path = m.group(2).rstrip(":").rsplit("/", 1)
             key = (path[0], path[1]) if len(path) == 2 else ("", path[0])
-            # FAIL важнее PASS при нескольких API
-            if res.get(key) != "FAIL":
-                res[key] = m.group(1)
+            # при нескольких API у кадра остаётся худший вердикт
+            if VERDICT_RANK[v] >= VERDICT_RANK.get(res.get(key), -1):
+                res[key] = v
     return res, text
 
 
@@ -1742,7 +1874,8 @@ def main():
     p.add_argument("--group", default="", help="добавочная подпапка группы")
     p.add_argument("-e", "--env", action="append", help="переменная Maestro KEY=VALUE")
     p.add_argument("--new", action="store_true", help="начать новый прогон")
-    p.add_argument("--timeout", type=int, default=900)
+    p.add_argument("--timeout", type=int, help="предел на ячейку, с (по умолчанию 2 × прошлый прогон или 600)")
+    p.add_argument("--stall", type=int, help="Maestro молчит дольше — зависание, с (по умолчанию самое долгое ожидание во flow + 20, не меньше 45)")
     p = add("save-flow", cmd_save_flow, "журнал ручных действий → Maestro flow")
     p.add_argument("slug")
     p.add_argument("--api")

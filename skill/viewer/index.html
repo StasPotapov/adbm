@@ -1,26 +1,26 @@
 <!doctype html>
-<html lang="ru">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ADBM борд</title>
+<title>ADBM board</title>
 <script src="manifest.js"></script>
 <style>
 :root {
   --bg: #f6f6f4; --panel: #ffffff; --ink: #1d1d1f; --muted: #6b6b70; --line: #e2e2de;
-  --accent: #2f6fdb; --pass: #1f8a4c; --fail: #c8372d; --same: #8a8a90; --chip: #ececea;
+  --accent: #2f6fdb; --pass: #1f8a4c; --fail: #c8372d; --warn: #b7791f; --same: #8a8a90; --chip: #ececea;
   --shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.05);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #141416; --panel: #1d1d20; --ink: #ececef; --muted: #9a9aa2; --line: #2e2e33;
-    --accent: #6d9cf0; --pass: #4cc27e; --fail: #f0766c; --same: #77777f; --chip: #2a2a2f;
+    --accent: #6d9cf0; --pass: #4cc27e; --fail: #f0766c; --warn: #e0a84a; --same: #77777f; --chip: #2a2a2f;
     --shadow: 0 1px 2px rgba(0,0,0,.4);
   }
 }
 :root[data-theme="dark"] {
   --bg: #141416; --panel: #1d1d20; --ink: #ececef; --muted: #9a9aa2; --line: #2e2e33;
-  --accent: #6d9cf0; --pass: #4cc27e; --fail: #f0766c; --same: #77777f; --chip: #2a2a2f;
+  --accent: #6d9cf0; --pass: #4cc27e; --fail: #f0766c; --warn: #e0a84a; --same: #77777f; --chip: #2a2a2f;
   --shadow: 0 1px 2px rgba(0,0,0,.4);
 }
 * { box-sizing: border-box; }
@@ -43,7 +43,8 @@ main { padding: 16px; max-width: 1800px; margin: 0 auto; }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; box-shadow: var(--shadow); }
 .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 8px; }
 .notes { white-space: pre-wrap; font-size: 13px; max-height: 320px; overflow: auto; }
-.notes .pass { color: var(--pass); font-weight: 600; } .notes .fail { color: var(--fail); font-weight: 600; }
+.notes .ok { color: var(--pass); font-weight: 600; } .notes .bug { color: var(--fail); font-weight: 600; }
+.notes .look { color: var(--warn); font-weight: 600; }
 .kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; font-size: 13px; }
 .kv dt { color: var(--muted); } .kv dd { margin: 0; overflow-wrap: anywhere; }
 .summary a { color: var(--accent); }
@@ -51,7 +52,8 @@ main { padding: 16px; max-width: 1800px; margin: 0 auto; }
 .row-head { display: flex; gap: 8px; align-items: baseline; padding: 8px 12px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .row-head b { font-weight: 600; } .row-head .grp { color: var(--muted); }
 .badge { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 4px; color: #fff; }
-.badge.PASS { background: var(--pass); } .badge.FAIL { background: var(--fail); }
+.badge.ok { background: var(--pass); } .badge.bug { background: var(--fail); } .badge.look { background: var(--warn); }
+.badge.same { background: var(--same); }
 .cells { display: flex; gap: 14px; padding: 10px 12px; overflow-x: auto; }
 .cell { flex: 0 0 auto; }
 .cell-head { font-size: 12px; color: var(--muted); margin-bottom: 4px; display: flex; gap: 8px; }
@@ -84,16 +86,16 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
   <h1>ADBM <small id="run"></small></h1>
   <div class="filters" id="apis" aria-label="API"></div>
   <span class="filters" id="groups"></span>
-  <input type="search" id="q" placeholder="кадр…" aria-label="Поиск по имени кадра">
-  <button class="chip" id="onlyChanged" aria-pressed="false">только изменённые</button>
+  <input type="search" id="q" placeholder="frame…" aria-label="Search by frame name">
+  <button class="chip" id="onlyChanged" aria-pressed="false">changed only</button>
   <span class="spacer"></span>
-  <label style="font-size:13px;color:var(--muted)">размер <input type="range" id="size" min="90" max="320" value="150"></label>
-  <button class="chip" id="theme" title="Тема">◐</button>
+  <label style="font-size:13px;color:var(--muted)">size <input type="range" id="size" min="90" max="320" value="150"></label>
+  <button class="chip" id="theme" title="Theme">◐</button>
 </header>
 <main>
   <section class="top">
-    <div class="card"><h2>Заметки и вердикт</h2><div class="notes" id="notes"></div></div>
-    <div class="card"><h2>Прогон</h2><dl class="kv" id="meta"></dl><div class="summary" id="summary" style="margin-top:8px"></div></div>
+    <div class="card"><h2>Notes and verdict</h2><div class="notes" id="notes"></div></div>
+    <div class="card"><h2>Run</h2><dl class="kv" id="meta"></dl><div class="summary" id="summary" style="margin-top:8px"></div></div>
   </section>
   <section id="rows"></section>
 </main>
@@ -102,8 +104,8 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
     <b id="dlgTitle"></b>
     <div class="filters" id="modes"></div>
     <span class="spacer"></span>
-    <span style="color:var(--muted);font-size:12px">← → соседний кадр · Esc закрыть</span>
-    <button class="chip" id="close">закрыть</button>
+    <span style="color:var(--muted);font-size:12px">← → next frame · Esc close</span>
+    <button class="chip" id="close">close</button>
   </div>
   <div class="dlg-body" id="dlgBody"></div>
 </dialog>
@@ -112,7 +114,7 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
   const M = window.MANIFEST;
   const $ = (s) => document.querySelector(s);
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-  if (!M) { $("#rows").innerHTML = '<div class="empty">manifest.js не найден — запусти <code>adbm board</code></div>'; return; }
+  if (!M) { $("#rows").innerHTML = '<div class="empty">manifest.js not found — run <code>adbm board</code></div>'; return; }
 
   try { const t = localStorage.getItem("adbm-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
   $("#theme").onclick = () => {
@@ -124,16 +126,18 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
 
   $("#run").textContent = M.run;
   document.title = "ADBM · " + M.run;
-  const meta = [["API", M.apis.join(", ")], ["пар", M.items.length]];
-  for (const [k, v] of Object.entries(M.builds || {})) meta.push([k === "before" ? "до" : "после", (v.package || "") + " · " + (v.apk || "").split("/").pop() + " · " + v.sha1]);
+  const meta = [["API", M.apis.join(", ")], ["pairs", M.items.length]];
+  for (const [k, v] of Object.entries(M.builds || {})) meta.push([k, (v.package || "") + " · " + (v.apk || "").split("/").pop() + " · " + v.sha1]);
   const st = M.stats || {};
-  if (st.frames != null) meta.push(["кадров снято", st.frames]);
-  meta.push(["картинок в контекст", (st.context_images || 0) + (st.context_image_tokens ? " (~" + st.context_image_tokens + " ток.)" : "")]);
-  meta.push(["собран", M.created.replace("T", " ")]);
+  if (st.frames != null) meta.push(["frames captured", st.frames]);
+  meta.push(["images in main context", (st.context_images || 0) + (st.context_image_tokens ? " (~" + st.context_image_tokens + " tokens)" : "")]);
+  meta.push(["built", M.created.replace("T", " ")]);
   $("#meta").innerHTML = meta.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("");
   $("#summary").innerHTML = (M.summary || []).map((p) => `<a href="${esc(p)}" target="_blank">${esc(p)}</a>`).join("<br>");
-  $("#notes").innerHTML = M.notes ? esc(M.notes).replace(/\b(PASS)\b/g, '<span class="pass">$1</span>').replace(/\b(FAIL)\b/g, '<span class="fail">$1</span>')
-    : '<span style="color:var(--muted)">notes.md пока нет — вердикт пишет субагент adbm-eyes</span>';
+  const VCLS = { expected: "ok", problem: "bug", review: "look" };
+  const VWORD = { EXPECTED: "expected", PROBLEM: "problem", REVIEW: "review", "ОЖИДАЕМО": "expected", "ПРОБЛЕМА": "problem", "ПОСМОТРЕТЬ": "review" };
+  $("#notes").innerHTML = M.notes ? esc(M.notes).replace(/\b(EXPECTED|PROBLEM|REVIEW)\b|(ОЖИДАЕМО|ПРОБЛЕМА|ПОСМОТРЕТЬ)/g, (v) => `<span class="${VCLS[VWORD[v]]}">${v}</span>`)
+    : '<span style="color:var(--muted)">no notes.md yet — the adbm-eyes subagent writes the verdict</span>';
 
   const apiOn = new Set(M.apis);
   $("#apis").innerHTML = M.apis.map((a) => `<button class="chip" data-api="${a}" aria-pressed="true">API ${a}</button>`).join("");
@@ -142,10 +146,10 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
     const a = +b.dataset.api; apiOn.has(a) ? apiOn.delete(a) : apiOn.add(a);
     b.setAttribute("aria-pressed", apiOn.has(a)); render();
   };
-  // группа «gestural/dark» → отдельный список на каждый уровень: навигация, тема, …
+  // group "gestural/dark" → one select per level: navigation, theme, …
   const levels = [];
   for (const g of M.groups) g.split("/").forEach((v, i) => { if (v) (levels[i] = levels[i] || new Set()).add(v); });
-  $("#groups").innerHTML = levels.map((vals, i) => `<select data-level="${i}" aria-label="Уровень группы ${i + 1}"><option value="*">все</option>` +
+  $("#groups").innerHTML = levels.map((vals, i) => `<select data-level="${i}" aria-label="Group level ${i + 1}"><option value="*">all</option>` +
     [...vals].sort().map((v) => `<option>${esc(v)}</option>`).join("") + "</select>").join("");
   $("#groups").onchange = render; $("#q").oninput = render;
   const groupOk = (g) => {
@@ -174,17 +178,19 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
         if (!its.length) return "";
         const cells = its.map((i) => {
           const idx = visible.push(i) - 1;
-          const pct = i.pct == null ? "" : i.same ? '<span class="pct same">без изменений</span>' : `<span class="pct chg">${i.pct}%</span>`;
+          const pct = i.pct == null ? "" : i.same ? '<span class="pct same">unchanged</span>' : `<span class="pct chg">${i.pct}%</span>`;
           const fig = (src, cap) => src ? `<figure><img loading="lazy" src="${esc(src)}" alt="${cap}"><figcaption>${cap}</figcaption></figure>`
-            : `<figure><div class="none">нет</div><figcaption>${cap}</figcaption></figure>`;
-          const pair = (i.before || !i.after ? fig(i.before, "до") : "") + fig(i.after, "после");
+            : `<figure><div class="none">none</div><figcaption>${cap}</figcaption></figure>`;
+          const pair = (i.before || !i.after ? fig(i.before, "before") : "") + fig(i.after, "after");
           const ui = i.ui && i.ui.length ? `<div class="ui">${esc(i.ui.slice(0, 4).join(" · "))}</div>` : "";
           return `<div class="cell"><div class="cell-head"><span>API ${i.api}</span>${pct}</div><div class="pair" data-i="${idx}">${pair}</div>${ui}</div>`;
         }).join("");
-        const badge = r.verdict ? `<span class="badge ${r.verdict}">${r.verdict}</span>` : "";
+        const same = r.items.every((i) => i.same === true);
+        const badge = r.verdict ? `<span class="badge ${VCLS[r.verdict] || ""}">${esc(r.verdict)}</span>`
+          : same ? '<span class="badge same">unchanged</span>' : "";
         return `<div class="row"><div class="row-head">${badge}<b>${esc(r.name)}</b><span class="grp">${esc(r.group)}</span></div><div class="cells">${cells}</div></div>`;
       }).join("");
-    $("#rows").innerHTML = html || '<div class="empty">ничего не подходит под фильтр</div>';
+    $("#rows").innerHTML = html || '<div class="empty">nothing matches the filter</div>';
   }
   render();
 
@@ -201,20 +207,20 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
 
   function open() {
     const i = visible[cur];
-    const modes = [["side", "рядом"]];
-    if (i.before && i.after) modes.push(["slider", "слайдер"]);
-    if (i.diff) modes.push(["diff", "дифф"]);
+    const modes = [["side", "side by side"]];
+    if (i.before && i.after) modes.push(["slider", "slider"]);
+    if (i.diff) modes.push(["diff", "diff"]);
     if (!modes.some((m) => m[0] === mode)) mode = "side";
     $("#modes").innerHTML = modes.map(([m, t]) => `<button class="chip" data-mode="${m}" aria-pressed="${m === mode}">${t}</button>`).join("");
-    $("#dlgTitle").textContent = `API ${i.api} · ${i.group ? i.group + " / " : ""}${i.name}` + (i.pct != null ? ` · ${i.same ? "без изменений" : i.pct + "%"}` : "");
+    $("#dlgTitle").textContent = `API ${i.api} · ${i.group ? i.group + " / " : ""}${i.name}` + (i.pct != null ? ` · ${i.same ? "unchanged" : i.pct + "%"}` : "");
     const body = $("#dlgBody");
     if (mode === "side") {
-      body.innerHTML = [["до", i.before], ["после", i.after]].filter((x) => x[1])
+      body.innerHTML = [["before", i.before], ["after", i.after]].filter((x) => x[1])
         .map(([c, s]) => `<figure class="side"><img src="${esc(s)}" alt="${c}"><figcaption>${c}</figcaption></figure>`).join("");
     } else if (mode === "diff") {
-      body.innerHTML = `<figure class="side"><img src="${esc(i.diff)}" alt="дифф"><figcaption>красное — изменившиеся пиксели</figcaption></figure>`;
+      body.innerHTML = `<figure class="side"><img src="${esc(i.diff)}" alt="diff"><figcaption>red — changed pixels</figcaption></figure>`;
     } else {
-      body.innerHTML = `<div class="slider"><img src="${esc(i.after)}" alt="после"><div class="over"><img src="${esc(i.before)}" alt="до"></div><div class="bar"></div><input type="range" min="0" max="100" value="50" aria-label="до / после"></div>`;
+      body.innerHTML = `<div class="slider"><img src="${esc(i.after)}" alt="after"><div class="over"><img src="${esc(i.before)}" alt="before"></div><div class="bar"></div><input type="range" min="0" max="100" value="50" aria-label="before / after"></div>`;
       const s = body.querySelector(".slider"), over = s.querySelector(".over"), bar = s.querySelector(".bar"), base = s.querySelector("img");
       const set = (v) => { over.style.width = v + "%"; bar.style.left = v + "%"; over.querySelector("img").style.width = base.clientWidth + "px"; };
       s.querySelector("input").oninput = (e) => set(e.target.value);
