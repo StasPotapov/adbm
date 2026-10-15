@@ -153,7 +153,8 @@ Haiku 5.5 с этим справляется. На прогоне MyPassBox вы
 6 PROBLEM и 2 EXPECTED. Вход Haiku 5.5 стоит $0,10 за 1 млн токенов, вход Sonnet 5.5 — $2.
 Effort `high` в этом прогоне не помог: субагент потратил больше токенов и пропустил светлый навбар.
 
-Если нужна другая цена или точность, задай модель и effort в файле настроек:
+Если нужна другая цена или точность, поменяй модель и effort в файле настроек.
+`adbm config --init` пишет его со значениями по умолчанию:
 
 ```bash
 adbm config --init            # ~/.config/adbm/config.ini ($XDG_CONFIG_HOME, если задан), для всех проектов
@@ -163,8 +164,8 @@ adbm config                   # итоговые значения и откуд�
 
 ```ini
 [adbm-eyes]
-model = sonnet    # sonnet, opus, haiku, fable; пусто — модель типа агента
-effort = medium   # low, medium, high, xhigh, max; пусто — обычный effort
+model = haiku     # sonnet, opus, haiku, fable; пусто — модель типа агента
+effort = low      # low, medium, high, xhigh, max; пусто — обычный effort
 ```
 
 Значения из файла проекта перекрывают пользовательский файл. Перед запуском субагента скилл вызывает

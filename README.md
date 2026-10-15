@@ -153,7 +153,8 @@ Haiku 5.5 handles this. On the MyPassBox run above it gave the same verdict as `
 6 PROBLEM and 2 EXPECTED. Haiku 5.5 input costs $0.10 per 1M tokens, Sonnet 5.5 input costs $2.
 Effort `high` did not help on this run: the subagent spent more tokens and missed the light navigation bar.
 
-If you need another price or accuracy, set the model and effort in a settings file:
+If you need another price or accuracy, change the model and effort in a settings file.
+`adbm config --init` writes it with the defaults:
 
 ```bash
 adbm config --init            # ~/.config/adbm/config.ini ($XDG_CONFIG_HOME if set), for all projects
@@ -163,8 +164,8 @@ adbm config                   # the effective values and where they come from
 
 ```ini
 [adbm-eyes]
-model = sonnet    # sonnet, opus, haiku, fable; empty — the default of the agent type
-effort = medium   # low, medium, high, xhigh, max; empty — the usual effort
+model = haiku     # sonnet, opus, haiku, fable; empty — the default of the agent type
+effort = low      # low, medium, high, xhigh, max; empty — the usual effort
 ```
 
 The project file overrides the user file. Before it starts the subagent, the skill runs `adbm config`
