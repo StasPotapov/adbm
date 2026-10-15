@@ -17,95 +17,21 @@ Claude Code skill и CLI `adbm`: агент работает с Android-устр
 
 - **по экрану агент ходит по тексту** — `adbm ui` сжимает дерево UI в 10–20 раз, `adbm tap "Закрыть"`;
 - **«изменилось ли» считает Python** — `adbm diff` даёт процент и область, для кадров из `adbm shot` — ещё и сдвиги элементов;
-- **кадры смотрит субагент** на более дешёвой модели и возвращает до 10 строк;
+- **кадры смотрит субагент** на дешёвой модели и возвращает до 10 строк;
 - **если без картинки никак** — `adbm look` отдаёт кадр 540 px (~860 токенов) или фрагмент.
 
 ## Как это работает
 
-Пример — реальный прогон в приложении MyPassBox. В нём сменили тему по умолчанию: была «Системная»,
-стала «Тёмная». Агент проверил три экрана на API 33 и 35 при светлой и тёмной системной теме.
-
 1. **Сборки.** `adbm install` ставит сборку «до» на все эмуляторы сразу, позже — сборку «после».
-2. **Сценарий.** `adbm run` прогоняет один Maestro flow на всех API параллельно, в каждой ячейке
-   матрицы `theme=light,dark`. Кадры ложатся в папку прогона, в контекст агента они не попадают.
-3. **Дифф.** `adbm diff` сравнивает пары «до | после» по пикселям и пишет одну строку на пару:
-
-   ```
-   api33/dark/2-settings: 2.5% @45,483-1035,582
-   api35/dark/2-settings: ≈ api33: the same change
-   api33/light/1-empty-list: 94.4% @0,96-1080,2274 · status bar differs
-   api35/light/1-empty-list: ≈ api33: the same change
-   …
-   pairs 12, changed 8 (4 same as another API), unchanged 4 · diff images: diff/
-   ```
-
-   Неизменённые пары дальше никто не смотрит. Значок `≈` значит, что на другом API пара изменилась так же.
-   Для небольшого изменения дифф вырезает кроп: «до» сверху, «после» снизу. Здесь это переключатель темы:
-
-   ![Кроп диффа: переключатель темы до и после](docs/img/diff-crop.png)
-
-   Статус-бар дифф сравнивает отдельно. На этом кропе видна ошибка: в «после» тёмные часы и иконки на тёмном фоне.
-
-   ![Кроп статус-бара до и после](docs/img/diff-statusbar.png)
-
-4. **Вердикт.** Субагент `adbm-eyes` смотрит коллаж и кропы по чек-листу задачи. На каждую изменённую пару
-   он пишет вердикт: EXPECTED — так задумано, PROBLEM — дефект, REVIEW — нужен взгляд человека.
-   Основной агент получает до 10 строк текста и не открывает ни одной картинки.
-5. **Борд.** `adbm board` собирает HTML-страницу: итог, вердикты, пары кадров с процентом изменения,
-   фильтр по API и режим «changed only».
+2. **Сценарий.** `adbm run` прогоняет один Maestro flow на всех API параллельно, в каждой ячейке матрицы тем и навигации.
+3. **Дифф.** `adbm diff` сравнивает пары «до | после» по пикселям. Неизменённые пары дальше никто не смотрит.
+4. **Вердикт.** Субагент `adbm-eyes` смотрит изменённые пары и пишет EXPECTED, PROBLEM или REVIEW.
+5. **Борд.** `adbm board` собирает HTML-страницу с итогом, вердиктами и парами кадров.
 
 ![Борд прогона: итог, вердикты и пара с PROBLEM](docs/img/board.png)
 
-Коллаж `00-summary.png` собирает все изменённые пары на одной картинке. Его смотрит субагент, а человеку
-он нужен для быстрого взгляда:
-
-![Коллаж до и после](docs/img/summary.png)
-
-Итог прогона: тёмная тема по умолчанию работает. Но при светлой системной теме часы и иконки статус-бара
-стали тёмными на тёмном фоне, а навбар остался светлым. Так на обоих API.
-
-Команды такого прогона:
-
-```bash
-adbm new mypassbox-dark-default
-adbm install before.apk --as before --api 33,35
-adbm run .adbm/flows/theme-default.yaml --api 33,35 --as before --matrix theme=light,dark
-adbm install after.apk --as after --api 33,35
-adbm run .adbm/flows/theme-default.yaml --api 33,35 --as after --matrix theme=light,dark
-adbm diff
-adbm board --open
-```
-
-## Что умеет
-
-| Команда | Что делает |
-|---|---|
-| `adbm doctor` | проверяет SDK, adb, emulator, Java, Maestro, Pillow, AVD и их `config.ini`, хук-ограждение, агента `adbm-eyes` и модели субагентов |
-| `adbm config` | настройки из `~/.config/adbm/config.ini` и `.adbm/config.ini`: модель и effort субагента, уровни API; `--set devices.apis=28,33,35 --project` записывает значение |
-| `adbm setup --api 28,33,35` | образы, AVD с 4 ГБ памяти, Maestro, Android CLI; `--hook`, `--agent` для Claude Code; без `--yes` — только план |
-| `adbm devices --start [28,33,35]` | поднимает эмуляторы (без значения — из `[devices] apis`), печатает API → serial → экран |
-| `adbm prep` | анимации 0, demo mode статус-бара, тема, навигация, шрифт |
-| `adbm new <slug>`, `adbm status` | начать папку прогона, показать текущий прогон и счётчики |
-| `adbm install <apk> [--as before\|after]` | ставит APK на все API параллельно (по умолчанию `after`) |
-| `adbm launch`, `stop`, `clear`, `uninstall`, `open <uri>`, `perm`, `log` | управление приложением: запуск, остановка, данные, deep link, разрешения, хвост logcat |
-| `adbm push`, `pull`, `rotate`, `devices --stop`, `clean` | файлы, ориентация, остановка эмуляторов, удаление старых прогонов (оставляет 5; без `--yes` только печатает план) |
-| `adbm flow new <slug>` | шаблон flow в `.adbm/flows/` |
-| `adbm ui`, `tap`, `wait`, `assert`, `type`, `clear-field`, `key`, `swipe` | навигация по тексту дерева UI; `tap` печатает, что изменилось на экране, `--expect` ждёт следующий экран |
-| `adbm shot`, `look`, `thumb`, `annotate`, `record` | кадры в папку прогона, уменьшенный кадр или фрагмент, видео |
-| `adbm run <flow.yaml> --matrix …` | Maestro flow на всех API параллельно, матрица тем и навигации |
-| `adbm save-flow` | ручная сессия → Maestro flow |
-| `adbm diff` | пиксельный дифф (540 px, кропы, статус-бар отдельно), дифф дерева UI, `≈ apiN` для того же изменения на другом API |
-| `adbm board` | HTML-борд и коллаж `00-summary.png` |
-
-Подпапки идут в порядке осей `--matrix`. Прогон ложится в `<проект>/build/adbm/<дата-время>-<slug>/`:
-
-```
-api35/before/gestural/dark/1-peek.png
-api35/after/gestural/dark/1-peek.png
-diff/api35/gestural/dark/1-peek.png
-logs/  notes.md  stats.json  builds.json
-index.html  manifest.js  00-summary.png
-```
+Это борд реального прогона: в приложении сменили тему по умолчанию, и проверка нашла нечитаемый
+статус-бар. Разбор по шагам, со строками диффа и кропами, — в [docs/example.ru.md](docs/example.ru.md).
 
 ## Установка
 
@@ -119,83 +45,32 @@ python3 -m pip install Pillow
 ~/dev/adbm/skill/bin/adbm doctor
 ```
 
+`setup --hook` меняет `~/.claude/settings.json`: хук запрещает агенту читать полноразмерные кадры во всех
+проектах. Что именно он меняет и как поставить хук руками — в [docs/configuration.ru.md](docs/configuration.ru.md).
 CLI работает и без Claude Code: `ln -s ~/dev/adbm/skill/bin/adbm /usr/local/bin/adbm`.
 
-**Хук-ограждение.** `skill/hooks/adbm-guard.py` запрещает `Read` полноразмерного кадра и сырого
-дампа UI. Так агент не потратит ~3350 токенов на один скриншот случайно. Плагин ставит хук сам
-(`skill/hooks/hooks.json`). При установке симлинком `adbm setup --hook --yes` дописывает его в
-`hooks.PreToolUse` файла `~/.claude/settings.json` (или `$CLAUDE_CONFIG_DIR`, если задан). Остальные настройки
-и права файла сохраняются; прежний файл копируется в `settings.json.adbm-backup` рядом с настоящим файлом
-(если это симлинк — рядом с его целью). Хук меняет Claude Code во всех проектах, поэтому ставится только с `--yes`
-после согласия человека. `adbm doctor` до тех пор показывает его как `missing`. Руками блок такой:
+## Частые команды
 
-```json
-"hooks": {
-  "PreToolUse": [{ "matcher": "Read", "hooks": [{ "type": "command",
-    "command": "f=~/.claude/skills/adbm/hooks/adbm-guard.py; [ -f \"$f\" ] || exit 0; exec python3 \"$f\"" }] }]
-}
-```
+| Задача | Команда |
+|---|---|
+| что на экране | `adbm ui` |
+| нажать и дождаться следующего экрана | `adbm tap "Настройки" --expect "Тема"` |
+| поднять эмуляторы проекта | `adbm devices --start` |
+| поставить сборку | `adbm install app.apk --as before` |
+| прогнать сценарий по матрице | `adbm run .adbm/flows/x.yaml --matrix theme=light,dark` |
+| сравнить и показать | `adbm diff`, затем `adbm board --open` |
+| логи приложения | `adbm log`, `adbm log --crash` |
+| проверить окружение | `adbm doctor` |
 
-**Замер сессии.** `tools/measure-session.py <transcript.jsonl>` показывает, сколько сессия
-Claude Code потратила на `adbm`: символы вывода по командам и прочитанные картинки.
-`adbm status` даёт ту же оценку для текущего прогона из `stats.json`.
+## Документация
 
-## Уровни API
-
-Список API для проверок хранится в файле проекта `.adbm/config.ini`. Команды без `--api` берут его, и им нужны все эмуляторы из списка: подними их `adbm devices --start`.
-Общий список для всех проектов можно задать в `~/.config/adbm/config.ini`: пустой `apis` в проекте его не перекрывает.
-
-```ini
-[devices]
-apis = 28, 33, 35               # пусто — один запущенный эмулятор или API 35
-image = google_apis             # вариант образа для новых AVD; не задан — любой уже скачанный
-profile = pixel_8               # профиль новых AVD, см. avdmanager list device
-```
-
-При первой проверке в проекте `apis` пустой. Агент смотрит `minSdk` приложения, предлагает уровни
-с причинами и ждёт ответа. Затем он записывает ответ: `adbm config --set devices.apis=28,33,35 --project`.
-
-Ссылка на образы не нужна. `adbm setup` строит план: `sdkmanager` скачивает недостающие образы из
-репозитория Google в `$ANDROID_HOME/system-images/`, `avdmanager` создаёт AVD. Уровень, для которого
-AVD уже есть, `setup` пропускает. Уже скачанный образ он использует повторно. Если `image` или `profile`
-не совпадают с существующим AVD, `setup` об этом пишет, а AVD не трогает: чтобы пересоздать, удали его. `adbm devices --start`
-без значения поднимает эмуляторы из списка. Чтобы добавить уровень, допиши число в `apis` и запусти `adbm setup`.
-
-## Модель субагента
-
-Субагент `adbm-eyes` по умолчанию работает на `haiku` с effort `low`.
-
-Сильная модель здесь не нужна: главное решают детерминированные проверки. `adbm diff` без модели
-находит изменённые пары, область и процент изменения, отдельно сравнивает статус-бар. Модель только
-объясняет результат: пишет, что именно сломалось, и отмечает пары с проблемой. Если модель ошибётся,
-изменённая пара всё равно останется на борде, и человек её увидит.
-
-Haiku 5.5 с этим справляется. На прогоне MyPassBox выше он поставил тот же вердикт, что `sonnet`:
-6 PROBLEM и 2 EXPECTED. Вход Haiku 5.5 стоит $0,10 за 1 млн токенов, вход Sonnet 5.5 — $2.
-Effort `high` в этом прогоне не помог: субагент потратил больше токенов и пропустил светлый навбар.
-
-Если нужна другая цена или точность, поменяй модель и effort в файле настроек.
-`adbm config --set` пишет одно значение, `adbm config --init` — файл со всеми ключами и комментариями:
-
-```bash
-adbm config --init            # ~/.config/adbm/config.ini ($XDG_CONFIG_HOME, если задан), для всех проектов
-adbm config --init --project  # .adbm/config.ini, только для этого проекта; ключи закомментированы и ничего не перекрывают
-adbm config --set adbm-eyes.model=sonnet  # одно значение в ~/.config/adbm/config.ini
-adbm config                   # итоговые значения и откуда они взяты
-```
-
-```ini
-[adbm-eyes]
-model = haiku     # sonnet, opus, haiku, fable; пусто — модель типа агента
-effort = low      # low, medium, high, xhigh, max; пусто — обычный effort
-```
-
-Значения из файла проекта перекрывают пользовательский файл. Перед запуском субагента скилл вызывает
-`adbm config` и передаёт `model` и `effort` в инструмент Agent. Если тип `adbm-eyes` не установлен,
-скилл запускает `general-purpose`, и пустой `model` там означает модель главной сессии.
-
-Настройка работает только в Claude Code. Если ты работаешь в другом инструменте (Codex и т. п.),
-перепиши под него раздел «The adbm-eyes subagent» в `skill/SKILL.md` и файл `skill/agents/adbm-eyes.md`.
+| Файл | Что там |
+|---|---|
+| [docs/example.ru.md](docs/example.ru.md) | реальный прогон по шагам: команды, строки диффа, кропы, коллаж, итог |
+| [docs/configuration.ru.md](docs/configuration.ru.md) | `config.ini`: уровни API, модель и effort субагента; хук-ограждение и агент `adbm-eyes` |
+| [docs/commands.ru.md](docs/commands.ru.md) | все команды, раскладка папки прогона, замер токенов сессии |
+| [docs/alternatives.ru.md](docs/alternatives.ru.md) | похожие инструменты: что они делают и чем ADBM от них отличается |
+| [skill/SKILL.md](skill/SKILL.md), [skill/reference/](skill/reference/) | инструкции для агента, на английском |
 
 ## Тесты
 
@@ -203,16 +78,8 @@ effort = low      # low, medium, high, xhigh, max; пусто — обычный
 python3 -m unittest discover tests
 ```
 
-Устройство не нужно: тесты проверяют разбор дерева UI, матрицу, дифф, вердикты, `save-flow`,
+Устройство не нужно: тесты проверяют разбор дерева UI, матрицу, дифф, вердикты, `save-flow`, настройки,
 хук-ограждение и замер сессии на фикстурах из реального прогона. Без Pillow тесты картинок пропускаются.
-
-## Почему не …
-
-- **Android CLI от Google** — journeys выполняет LLM, прогон недетерминирован. Бинарник закрытый,
-  телеметрия включена по умолчанию. ADBM использует его только для `annotate`.
-- **mobile-mcp и похожие MCP** — интерактивные, держат скриншоты в контексте, работают с одним устройством.
-- **Roborazzi, Paparazzi, Shot** — нужны код тестов и эталоны в git. ADBM сравнивает две сборки.
-- **Percy, Emerge, Applitools** — облачные и платные.
 
 ## Лицензия
 

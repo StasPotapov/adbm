@@ -607,7 +607,7 @@ def load_settings(name="settings.json", strict=False):
         return d if isinstance(d, dict) else {}
     except ValueError as e:
         if strict:
-            die(f"{p} is not valid JSON ({e}) — add the hook by hand, see the README")
+            die(f"{p} is not valid JSON ({e}) — add the hook by hand, see docs/configuration.md")
         return {}
 
 

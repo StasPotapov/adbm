@@ -17,95 +17,21 @@ A 1080×2400 screenshot costs a model ~3350 tokens, so screenshots never enter t
 
 - **the agent navigates by text** — `adbm ui` shrinks the UI tree 10–20×, `adbm tap "Close"`;
 - **"did it change" is computed in Python** — `adbm diff` reports percent and area, and element shifts for frames from `adbm shot`;
-- **a subagent looks at the images** on a cheaper model and returns up to 10 lines;
+- **a subagent looks at the images** on a cheap model and returns up to 10 lines;
 - **when a picture is unavoidable** — `adbm look` returns a 540 px frame (~860 tokens) or a crop.
 
 ## How it works
 
-The example is a real run on the MyPassBox app. The change switched the default theme from "System"
-to "Dark". The agent checked three screens on API 33 and 35 with a light and a dark system theme.
-
 1. **Builds.** `adbm install` installs the "before" build on all emulators at once, later the "after" build.
-2. **Scenario.** `adbm run` runs one Maestro flow on all API levels in parallel, in every cell
-   of the `theme=light,dark` matrix. Frames go to the run folder, not into the agent's context.
-3. **Diff.** `adbm diff` compares "before | after" pairs pixel by pixel and prints one line per pair:
-
-   ```
-   api33/dark/2-settings: 2.5% @45,483-1035,582
-   api35/dark/2-settings: ≈ api33: the same change
-   api33/light/1-empty-list: 94.4% @0,96-1080,2274 · status bar differs
-   api35/light/1-empty-list: ≈ api33: the same change
-   …
-   pairs 12, changed 8 (4 same as another API), unchanged 4 · diff images: diff/
-   ```
-
-   Nobody looks at unchanged pairs after this. The `≈` mark means the pair changed the same way on another API level.
-   For a small change the diff cuts a crop: "before" on top, "after" below. Here it is the theme switch:
-
-   ![Diff crop: the theme switch before and after](docs/img/diff-crop.png)
-
-   The diff compares the status bar apart. This crop shows the defect: in "after" the clock and icons are dark on a dark background.
-
-   ![Status bar crop before and after](docs/img/diff-statusbar.png)
-
-4. **Verdict.** The `adbm-eyes` subagent looks at the contact sheet and crops against the task checklist.
-   For every changed pair it writes a verdict: EXPECTED — as intended, PROBLEM — a defect, REVIEW — a person should look.
-   The main agent gets up to 10 lines of text and opens no images.
-5. **Board.** `adbm board` builds an HTML page: the summary, verdicts, frame pairs with the changed percent,
-   an API filter and a "changed only" mode.
+2. **Scenario.** `adbm run` runs one Maestro flow on all API levels in parallel, in every cell of the theme and navigation matrix.
+3. **Diff.** `adbm diff` compares "before | after" pairs pixel by pixel. Nobody looks at unchanged pairs after this.
+4. **Verdict.** The `adbm-eyes` subagent looks at the changed pairs and writes EXPECTED, PROBLEM or REVIEW.
+5. **Board.** `adbm board` builds an HTML page with the summary, verdicts and frame pairs.
 
 ![Run board: summary, verdicts and a PROBLEM pair](docs/img/board.png)
 
-The `00-summary.png` contact sheet puts all changed pairs on one image. The subagent looks at it,
-and a person uses it for a quick look:
-
-![Before and after contact sheet](docs/img/summary.png)
-
-The result of the run: the dark default theme works. But with a light system theme the status bar clock and icons
-became dark on a dark background, and the navigation bar stayed light. The same on both API levels.
-
-Commands of such a run:
-
-```bash
-adbm new mypassbox-dark-default
-adbm install before.apk --as before --api 33,35
-adbm run .adbm/flows/theme-default.yaml --api 33,35 --as before --matrix theme=light,dark
-adbm install after.apk --as after --api 33,35
-adbm run .adbm/flows/theme-default.yaml --api 33,35 --as after --matrix theme=light,dark
-adbm diff
-adbm board --open
-```
-
-## Commands
-
-| Command | What it does |
-|---|---|
-| `adbm doctor` | checks SDK, adb, emulator, Java, Maestro, Pillow, AVDs and their `config.ini`, the guard hook, the `adbm-eyes` agent and the subagent models |
-| `adbm config` | settings from `~/.config/adbm/config.ini` and `.adbm/config.ini`: subagent model and effort, API levels; `--set devices.apis=28,33,35 --project` writes a value |
-| `adbm setup --api 28,33,35` | system images, AVDs with 4 GB RAM, Maestro, Android CLI; `--hook`, `--agent` for Claude Code; without `--yes` it only prints the plan |
-| `adbm devices --start [28,33,35]` | boots emulators (without a value — from `[devices] apis`), prints API → serial → screen |
-| `adbm prep` | animations off, status bar demo mode, theme, navigation mode, font scale |
-| `adbm new <slug>`, `adbm status` | start a run folder, show the current run and counters |
-| `adbm install <apk> [--as before\|after]` | installs an APK on all API levels in parallel (`after` by default) |
-| `adbm launch`, `stop`, `clear`, `uninstall`, `open <uri>`, `perm`, `log` | app control: launch, force-stop, data, deep link, permissions, logcat tail |
-| `adbm push`, `pull`, `rotate`, `devices --stop`, `clean` | files, orientation, stop emulators, delete old runs (keeps 5; without `--yes` only prints the plan) |
-| `adbm flow new <slug>` | a flow template in `.adbm/flows/` |
-| `adbm ui`, `tap`, `wait`, `assert`, `type`, `clear-field`, `key`, `swipe` | navigation by UI tree text; `tap` prints what changed on the screen, `--expect` waits for the next screen |
-| `adbm shot`, `look`, `thumb`, `annotate`, `record` | frames into the run folder, a downscaled frame or crop, video |
-| `adbm run <flow.yaml> --matrix …` | a Maestro flow on all API levels in parallel, theme and navigation matrix |
-| `adbm save-flow` | manual session → Maestro flow |
-| `adbm diff` | pixel diff (540 px, crops, status bar apart), UI tree diff, `≈ apiN` for the same change on another API |
-| `adbm board` | HTML board and `00-summary.png` contact sheet |
-
-Subfolders follow the order of axes in `--matrix`. A run is stored in `<project>/build/adbm/<date-time>-<slug>/`:
-
-```
-api35/before/gestural/dark/1-peek.png
-api35/after/gestural/dark/1-peek.png
-diff/api35/gestural/dark/1-peek.png
-logs/  notes.md  stats.json  builds.json
-index.html  manifest.js  00-summary.png
-```
+This is the board of a real run: the app's default theme changed, and the check found an unreadable
+status bar. A step-by-step walkthrough with diff lines and crops is in [docs/example.md](docs/example.md).
 
 ## Install
 
@@ -119,83 +45,32 @@ python3 -m pip install Pillow
 ~/dev/adbm/skill/bin/adbm doctor
 ```
 
+`setup --hook` changes `~/.claude/settings.json`: the hook denies the agent reading full-size frames in every
+project. What exactly it changes and how to add the hook by hand is in [docs/configuration.md](docs/configuration.md).
 The CLI works without Claude Code too: `ln -s ~/dev/adbm/skill/bin/adbm /usr/local/bin/adbm`.
 
-**Guard hook.** `skill/hooks/adbm-guard.py` denies `Read` of a full-size frame or a raw UI dump,
-so an agent cannot spend ~3350 tokens on one screenshot by accident. As a plugin, ADBM registers it
-itself (`skill/hooks/hooks.json`). With the symlink install `adbm setup --hook --yes` appends it to
-`hooks.PreToolUse` in `~/.claude/settings.json` (`$CLAUDE_CONFIG_DIR` if set). It keeps the other settings and the
-file mode; a copy of the old file goes to `settings.json.adbm-backup` next to the real file (through a symlink —
-next to its target). It changes Claude Code for every project, so it runs only with `--yes` after the person agrees.
-`adbm doctor` reports the hook as `missing` until then. By hand, the block is:
+## Common commands
 
-```json
-"hooks": {
-  "PreToolUse": [{ "matcher": "Read", "hooks": [{ "type": "command",
-    "command": "f=~/.claude/skills/adbm/hooks/adbm-guard.py; [ -f \"$f\" ] || exit 0; exec python3 \"$f\"" }] }]
-}
-```
+| Task | Command |
+|---|---|
+| what is on the screen | `adbm ui` |
+| tap and wait for the next screen | `adbm tap "Settings" --expect "Theme"` |
+| boot the project's emulators | `adbm devices --start` |
+| install a build | `adbm install app.apk --as before` |
+| run a scenario over a matrix | `adbm run .adbm/flows/x.yaml --matrix theme=light,dark` |
+| compare and show | `adbm diff`, then `adbm board --open` |
+| app logs | `adbm log`, `adbm log --crash` |
+| check the environment | `adbm doctor` |
 
-**Measuring a session.** `tools/measure-session.py <transcript.jsonl>` prints what a Claude Code
-session spent on `adbm`: characters of output per command and images read.
-`adbm status` prints the same estimate for the current run from `stats.json`.
+## Documentation
 
-## API levels
-
-The list of API levels to check lives in the project file `.adbm/config.ini`. Commands without `--api` use it and need all its emulators running: boot them with `adbm devices --start`.
-A list for all projects can go to `~/.config/adbm/config.ini`: an empty `apis` in the project does not override it.
-
-```ini
-[devices]
-apis = 28, 33, 35               # empty — the one running emulator, or API 35
-image = google_apis             # image variant for new AVDs; not set — any image already on disk
-profile = pixel_8               # profile of new AVDs, see avdmanager list device
-```
-
-On the first check in a project `apis` is empty. The agent reads the app's `minSdk`, offers levels
-with reasons and waits for the answer. Then it writes the answer: `adbm config --set devices.apis=28,33,35 --project`.
-
-No link to images is needed. `adbm setup` builds a plan: `sdkmanager` downloads the missing images from
-Google's repository into `$ANDROID_HOME/system-images/`, and `avdmanager` creates AVDs. `setup` skips a level
-that already has an AVD and reuses an image already on disk. If `image` or `profile` differs from an existing AVD,
-`setup` says so and leaves the AVD alone: delete it to recreate it. `adbm devices --start` without a value
-boots the emulators from the list. To add a level, append the number to `apis` and run `adbm setup`.
-
-## Subagent model
-
-The `adbm-eyes` subagent runs on `haiku` with effort `low` by default.
-
-A strong model is not needed here: deterministic checks do the main work. `adbm diff` finds the changed
-pairs, the area and the changed percent without a model, and compares the status bar apart. The model only
-explains the result: it writes what exactly broke and marks the pairs with a problem. If the model is wrong,
-the changed pair still stays on the board, and a person sees it.
-
-Haiku 5.5 handles this. On the MyPassBox run above it gave the same verdict as `sonnet`:
-6 PROBLEM and 2 EXPECTED. Haiku 5.5 input costs $0.10 per 1M tokens, Sonnet 5.5 input costs $2.
-Effort `high` did not help on this run: the subagent spent more tokens and missed the light navigation bar.
-
-If you need another price or accuracy, change the model and effort in a settings file.
-`adbm config --set` writes one value, `adbm config --init` writes a file with all keys and comments:
-
-```bash
-adbm config --init            # ~/.config/adbm/config.ini ($XDG_CONFIG_HOME if set), for all projects
-adbm config --init --project  # .adbm/config.ini, for this project only; keys are commented out and override nothing
-adbm config --set adbm-eyes.model=sonnet  # one value in ~/.config/adbm/config.ini
-adbm config                   # the effective values and where they come from
-```
-
-```ini
-[adbm-eyes]
-model = haiku     # sonnet, opus, haiku, fable; empty — the default of the agent type
-effort = low      # low, medium, high, xhigh, max; empty — the usual effort
-```
-
-The project file overrides the user file. Before it starts the subagent, the skill runs `adbm config`
-and passes `model` and `effort` to the Agent tool. If the `adbm-eyes` type is not installed,
-the skill starts `general-purpose`, and an empty `model` there means the main session's model.
-
-The settings work only in Claude Code. If you use another tool (Codex and others), adapt
-the "The adbm-eyes subagent" section of `skill/SKILL.md` and `skill/agents/adbm-eyes.md` to it.
+| File | What is in it |
+|---|---|
+| [docs/example.md](docs/example.md) | a real run step by step: commands, diff lines, crops, contact sheet, result |
+| [docs/configuration.md](docs/configuration.md) | `config.ini`: API levels, subagent model and effort; the guard hook and the `adbm-eyes` agent |
+| [docs/commands.md](docs/commands.md) | all commands, the run folder layout, measuring a session's tokens |
+| [docs/alternatives.md](docs/alternatives.md) | similar tools: what they do and how ADBM differs |
+| [skill/SKILL.md](skill/SKILL.md), [skill/reference/](skill/reference/) | instructions for the agent |
 
 ## Tests
 
@@ -203,16 +78,8 @@ the "The adbm-eyes subagent" section of `skill/SKILL.md` and `skill/agents/adbm-
 python3 -m unittest discover tests
 ```
 
-No device is needed: the tests cover the UI tree parser, the matrix, the diff, verdicts, `save-flow`,
+No device is needed: the tests cover the UI tree parser, the matrix, the diff, verdicts, `save-flow`, settings,
 the guard hook and the session measurement on fixtures from a real run. Without Pillow the image tests are skipped.
-
-## Why not …
-
-- **Google's Android CLI** — journeys are executed by an LLM, so runs are not deterministic. The binary
-  is closed source and telemetry is on by default. ADBM uses it only for `annotate`.
-- **mobile-mcp and similar MCP servers** — interactive, keep screenshots in context, one device at a time.
-- **Roborazzi, Paparazzi, Shot** — need test code and golden images in git. ADBM compares two builds.
-- **Percy, Emerge, Applitools** — cloud and paid.
 
 ## License
 

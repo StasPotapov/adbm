@@ -52,7 +52,7 @@ A 1080×2400 image costs ~3350 tokens, a line of `adbm ui` ~15.
 4. **Logs:** read only on failure and only the part you need (`tail`, `grep`).
 
 `adbm status` estimates what `adbm` put into the context. If the guard hook is installed (plugin, or
-`settings.json` per the README), it denies `Read` of a frame or a raw XML dump: do what the denial says.
+`settings.json` per `docs/configuration.md`), it denies `Read` of a frame or a raw XML dump: do what the denial says.
 
 ## Visual check
 
