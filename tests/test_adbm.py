@@ -255,6 +255,46 @@ class ToolsTest(unittest.TestCase):
         self.assertEqual(decide("/p/build/adbm/r/diff/api35/dark/1.crop.png"), "allow")
         self.assertEqual(decide("/p/build/adbm/r/00-summary.png"), "allow")
         self.assertEqual(decide("/p/src/api35/icon.png"), "allow")
+        r = subprocess.run([sys.executable, hook], capture_output=True, text=True,
+                           input=json.dumps({"tool_input": {"file_path": "/c/projects/p/shots/api35/1.png"}}),
+                           env={**os.environ, "ADBM_CACHE": "/c"})
+        self.assertIn("deny", r.stdout)
+
+    def test_phone_avds_skip_other_form_factors(self):
+        def avd(sysdir, device="pixel_8"):
+            return {"api": 34, "path": "", "config": {"image.sysdir.1": sysdir, "hw.device.name": device}}
+        avds = {"Television_1080p_API_34": avd("system-images/android-34/android-tv/arm64-v8a/", "tv_1080p"),
+                "Pixel_Tablet_API_34": avd("system-images/android-34/google_apis/arm64-v8a/", "pixel_tablet"),
+                "Wear_API_34": avd("system-images/android-34/android-wear/arm64-v8a/", "wearos_small_round"),
+                "Pixel_8_API_34": avd("system-images/android-34/google_apis/arm64-v8a/"),
+                "adbm_API_34": avd("system-images/android-34/google_apis/arm64-v8a/")}
+        self.assertEqual(adbm.phone_avds(avds, 34), ["adbm_API_34", "Pixel_8_API_34"])
+        self.assertEqual(adbm.phone_avds(avds, 35), [])
+
+    def test_tune_keeps_bigger_values(self):
+        d = tempfile.mkdtemp(dir=TMP)
+        with open(os.path.join(d, "config.ini"), "w") as f:
+            f.write("hw.ramSize=8192\nhw.cores=2\ndisk.dataPartition.size=16G\nhw.gpu.mode=auto\n")
+        adbm.tune_config(d)
+        cfg = adbm.read_ini(os.path.join(d, "config.ini"))
+        self.assertEqual((cfg["hw.ramSize"], cfg["hw.cores"], cfg["disk.dataPartition.size"]), ("8192", "4", "16G"))
+        self.assertEqual((cfg["hw.gpu.mode"], cfg["vm.heapSize"]), ("host", "576"))
+
+    def test_settings_not_an_object_stops_install(self):
+        cfg = tempfile.mkdtemp(dir=TMP)
+        with open(os.path.join(cfg, "settings.json"), "w") as f:
+            f.write("[1, 2]")
+        old = os.environ.get("CLAUDE_CONFIG_DIR")
+        os.environ["CLAUDE_CONFIG_DIR"] = cfg
+        try:
+            self.assertEqual(adbm.load_settings(), {})
+            with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+                adbm.load_settings(strict=True)
+        finally:
+            if old is None:
+                del os.environ["CLAUDE_CONFIG_DIR"]
+            else:
+                os.environ["CLAUDE_CONFIG_DIR"] = old
 
     def test_install_guard_keeps_settings(self):
         cfg = tempfile.mkdtemp(dir=TMP)

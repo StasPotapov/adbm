@@ -36,7 +36,9 @@ logs/  notes.md  stats.json  builds.json
 index.html  manifest.js  00-summary.png
 ```
 
-Вне прогона `shot` и `record` пишут кадры в кэш проекта `~/.cache/adbm/projects/`. Такие кадры `diff` и `board` не видят.
+`./gradlew clean` может удалить `build/adbm` вместе с `build/`: задача `clean` из шаблона Android удаляет корневую папку `build`. Нужный прогон скопируй в другое место.
+
+Вне прогона `shot` и `record` пишут кадры в кэш проекта `~/.cache/adbm/projects/` (`$ADBM_CACHE/projects/`, если переменная задана). Такие кадры `diff` и `board` не видят.
 
 ## Замер токенов
 

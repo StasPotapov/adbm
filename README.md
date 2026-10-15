@@ -5,6 +5,18 @@
 A [Claude Code](https://code.claude.com/docs/en/overview) [skill](https://code.claude.com/docs/en/skills) and the `adbm` CLI: an agent works with an Android device and [emulators](https://developer.android.com/studio/run/emulator)
 over [adb](https://developer.android.com/tools/adb) and spends few tokens on it. The agent calls `adbm` commands instead of raw `adb`.
 
+## Why
+
+The agent checks the app, and you only look at the result.
+
+- **Easier for the agent.** One `adbm` command replaces a chain of `adb` calls. The agent saves tokens at every step:
+  navigation, screenshots and checks. So it works faster and costs less.
+- **Fully automated.** The agent boots the emulators, installs the builds, runs the scenario and compares the frames.
+- **Easier for you to check.** You open one board and see only what changed, with a verdict
+  for each frame. In a minute you know whether everything is fine.
+
+## What it does
+
 - **Device control.** The agent launches and stops the app, navigates the screen,
   types text (Cyrillic included), reads [logcat](https://developer.android.com/tools/logcat), grants permissions, copies files.
 - **Several API levels at once.** The agent boots emulators for the Android versions you need,
@@ -49,10 +61,13 @@ ADBM does not replace these tools: it ties them together and saves the agent's t
 
 Requires the Android SDK and Python 3.9+ with Pillow. Scenarios and non-ASCII `adbm type` need [Maestro](https://github.com/mobile-dev-inc/Maestro), video needs ffmpeg.
 
+Platforms: macOS is tested. Linux should work: it needs `/dev/kvm` for the emulator. Windows is not supported; WSL is not tested.
+
 ```bash
-git clone <repo> ~/dev/adbm
+git clone https://github.com/StasPotapov/adbm.git ~/dev/adbm
+mkdir -p ~/.claude/skills
 ln -s ~/dev/adbm/skill ~/.claude/skills/adbm
-python3 -m pip install Pillow
+python3 -m pip install Pillow   # Homebrew Python: brew install pillow; Debian/Ubuntu: sudo apt install python3-pil
 ~/dev/adbm/skill/bin/adbm setup --hook --agent --yes   # guard hook + adbm-eyes agent
 ~/dev/adbm/skill/bin/adbm doctor
 ```

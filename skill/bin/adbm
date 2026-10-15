@@ -46,6 +46,8 @@ TUNE = {
     "hw.keyboard": "yes",
     "hw.gpu.mode": "host",
 }
+# system image variants for a phone AVD, in order of preference
+PHONE_IMAGES = ("google_apis", "google_apis_playstore", "default", "google_atd", "aosp_atd")
 LOOK_W = {"normal": 540, "small": 360}
 DIFF_W = 540
 _lock = threading.Lock()
@@ -53,6 +55,32 @@ USED_RUN = []  # the run folder a command worked with: its output size goes to t
 
 
 # ---------------------------------------------------------------- utilities
+
+def pkg_hint(brew, apt):
+    """Install command for this OS: Homebrew on macOS, apt elsewhere."""
+    return f"brew install {brew}" if sys.platform == "darwin" else f"sudo apt install {apt} (or your distro's package)"
+
+
+PILLOW_HINT = ("pip install Pillow for the python3 that runs adbm (Homebrew: brew install pillow; "
+               "Debian/Ubuntu: sudo apt install python3-pil; or a venv)")
+
+
+def android_cli():
+    """Path to Google's Android CLI; the old SDK `tools/android` script with the same name does not count."""
+    p = shutil.which("android")
+    if not p:
+        return None
+    d = os.path.dirname(os.path.realpath(p))
+    if os.path.basename(d) == "tools" and os.path.isdir(os.path.join(os.path.dirname(d), "platform-tools")):
+        return None
+    return p
+
+
+def maestro_bin():
+    """Maestro on PATH, or in ~/.maestro/bin where its install script puts it."""
+    p = os.path.expanduser("~/.maestro/bin/maestro")
+    return shutil.which("maestro") or (p if os.access(p, os.X_OK) else None)
+
 
 def die(msg, code=1):
     print(f"error: {msg}", file=sys.stderr)
@@ -304,15 +332,32 @@ def pil():
     try:
         from PIL import Image
     except ImportError:
-        die("Pillow is missing — python3 -m pip install Pillow")
+        die("Pillow is missing — " + PILLOW_HINT)
     return Image
 
 
 # ---------------------------------------------------------------- devices
 
+def avd_home():
+    if os.environ.get("ANDROID_AVD_HOME"):
+        return os.environ["ANDROID_AVD_HOME"]
+    user = os.environ.get("ANDROID_USER_HOME") or os.environ.get("ANDROID_EMULATOR_HOME")
+    return os.path.join(user, "avd") if user else os.path.expanduser("~/.android/avd")
+
+
+NOT_PHONE = re.compile(r"wear|android-tv|google-tv|automotive|android-desktop|tablet|fold|\btv_", re.I)
+
+
+def phone_avds(avds, api):
+    """Phone AVDs of an API level: adbm's own first, then by name; Wear, TV, Automotive, tablets skipped."""
+    names = [n for n, i in avds.items() if i["api"] == api and (n == f"adbm_API_{api}" or not NOT_PHONE.search(
+        " ".join(i["config"].get(k, "") for k in ("image.sysdir.1", "tag.id", "hw.device.name"))))]
+    return sorted(names, key=lambda n: (n != f"adbm_API_{api}", n.lower()))
+
+
 def avd_index():
     """AVD → {api, path, config}."""
-    home = os.environ.get("ANDROID_AVD_HOME") or os.path.expanduser("~/.android/avd")
+    home = avd_home()
     res = {}
     for ini in sorted(glob.glob(os.path.join(home, "*.ini"))):
         name = os.path.basename(ini)[:-4]
@@ -604,11 +649,16 @@ def load_settings(name="settings.json", strict=False):
     try:
         with open(p) as f:
             d = json.load(f)
-        return d if isinstance(d, dict) else {}
     except ValueError as e:
         if strict:
-            die(f"{p} is not valid JSON ({e}) — add the hook by hand, see docs/configuration.md")
+            empty = " (the file is empty: delete it or write {} into it)" if os.path.getsize(p) == 0 else ""
+            die(f"{p} is not valid JSON ({e}){empty} — add the hook by hand, see docs/configuration.md")
         return {}
+    if isinstance(d, dict):
+        return d
+    if strict:
+        die(f"{p} is not a JSON object — add the hook by hand, see docs/configuration.md")
+    return {}
 
 
 def adbm_plugin_installed():
@@ -875,7 +925,7 @@ def claude_rows():
     if adbm_plugin_installed():
         return [(True, "guard hook, adbm-eyes", "from the adbm plugin", "")]
     ok = guard_anywhere()
-    rows = [(ok, "guard hook", "denies Read of full frames" if ok else "Read of a full frame is not denied",
+    rows = [(True if ok else None, "guard hook", "denies Read of full frames" if ok else "Read of a full frame is not denied",
              "ask the person, then adbm setup --hook --yes")]
     link = agent_link()
     ok = os.path.realpath(link) == agent_target()
@@ -912,8 +962,8 @@ def cmd_doctor(a):
     code, out, err = sh(["java", "-version"], timeout=20)
     m = re.search(r'version "(\d+)', out + err)
     jv = int(m.group(1)) if m else 0
-    row(jv >= 17, "Java 17+", f"java {jv}" if jv else "java not found", "brew install openjdk@17")
-    mae = shutil.which("maestro")
+    row(jv >= 17, "Java 17+", f"java {jv}" if jv else "java not found", pkg_hint("openjdk@17", "openjdk-17-jdk"))
+    mae = maestro_bin()
     if mae:
         _, o, _ = sh([mae, "--version"], timeout=60)
         row(True, "Maestro", (o.strip().splitlines() or ["?"])[-1])
@@ -923,10 +973,10 @@ def cmd_doctor(a):
         import PIL
         row(True, "Pillow", PIL.__version__)
     except ImportError:
-        row(False, "Pillow", "needed for contact sheet, diff, look", "python3 -m pip install Pillow")
+        row(False, "Pillow", "needed for contact sheet, diff, look", PILLOW_HINT)
     ff = shutil.which("ffmpeg")
-    row(bool(ff) or None, "ffmpeg", ff or "needed only for record", "brew install ffmpeg")
-    acli = shutil.which("android")
+    row(bool(ff) or None, "ffmpeg", ff or "needed only for record", pkg_hint("ffmpeg", "ffmpeg"))
+    acli = android_cli()
     row(True if acli else None, "Android CLI (optional)", acli or "only for screens without a UI tree (annotate, tap #N); the rest works without it",
         "adbm setup --android-cli --yes")
     for ok, name, detail, fix in claude_rows():
@@ -940,8 +990,8 @@ def cmd_doctor(a):
         row(None, "config API levels", "not set: commands without --api take the one running emulator or API 35",
             "ask the person, then adbm config --set devices.apis=28,33,35 --project")
     else:
-        have_avd = {i["api"] for i in avd_index().values()}
-        miss = [f"API {n_}: no AVD" for n_ in want if n_ not in have_avd]
+        avds = avd_index()
+        miss = [f"API {n_}: no phone AVD" for n_ in want if not phone_avds(avds, n_)]
         row(False if miss else True, "config API levels", "; ".join(miss) or ", ".join(map(str, want)) + " — AVDs exist",
             "adbm setup --yes")
     # system images and AVDs
@@ -954,20 +1004,7 @@ def cmd_doctor(a):
         row(None, "AVD", "none", "adbm setup --api 35 --yes")
     for name, info in avds.items():
         cfg = info["config"]
-        bad = []
-        for k, want in TUNE.items():
-            have = cfg.get(k, "")
-            if k in ("hw.ramSize", "vm.heapSize"):
-                if to_mb(have) < to_mb(want):
-                    bad.append(f"{k}={have or '-'}")
-            elif k == "disk.dataPartition.size":
-                if to_mb(have) < to_mb(want):
-                    bad.append(f"{k}={have or '-'}")
-            elif k == "hw.cores":
-                if not have.isdigit() or int(have) < int(want):
-                    bad.append(f"{k}={have or '-'}")
-            elif have != want:
-                bad.append(f"{k}={have or '-'}")
+        bad = [f"{k}={cfg.get(k, '') or '-'}" for k in TUNE if below_tune(k, cfg.get(k, ""))]
         detail = f"API {info['api']}" + (" · " + ", ".join(bad) if bad else "")
         row(None if bad else True, f"AVD {name}", detail, "adbm setup --tune --yes" if bad else "")
     w = [max(len(r[i]) for r in rows) for i in range(3)]
@@ -991,8 +1028,22 @@ def to_mb(v):
     return n * {"": 1, "K": 1 / 1024, "M": 1, "G": 1024, "T": 1024 * 1024}[u]
 
 
+@functools.lru_cache(maxsize=None)
 def abi():
-    return "arm64-v8a" if platform.machine() in ("arm64", "aarch64") else "x86_64"
+    arm = platform.machine() in ("arm64", "aarch64")
+    if not arm and sys.platform == "darwin":  # python under Rosetta reports x86_64 on Apple Silicon
+        arm = sh(["sysctl", "-n", "hw.optional.arm64"], timeout=5)[1].strip() == "1"
+    return "arm64-v8a" if arm else "x86_64"
+
+
+def below_tune(k, have):
+    """True if an AVD config value is worse than TUNE; bigger memory, disk or cores stay."""
+    want = TUNE[k]
+    if k in ("hw.ramSize", "vm.heapSize", "disk.dataPartition.size"):
+        return to_mb(have) < to_mb(want)
+    if k == "hw.cores":
+        return not have.isdigit() or int(have) < int(want)
+    return have != want
 
 
 def tune_config(path):
@@ -1001,9 +1052,9 @@ def tune_config(path):
     seen = set()
     out = []
     for line in lines:
-        k = line.split("=", 1)[0].strip()
+        k, _, v = (x.strip() for x in line.partition("="))
         if k in TUNE:
-            out.append(f"{k}={TUNE[k]}")
+            out.append(f"{k}={TUNE[k]}" if below_tune(k, v) else line)
             seen.add(k)
         else:
             out.append(line)
@@ -1027,9 +1078,9 @@ def cmd_setup(a):
     dev_cfg = config_loaded()[0]["devices"]
     any_variant = dev_cfg["image"][1] == "default"
     for api in apis or []:
-        have_avd = [(n, i) for n, i in avds.items() if i["api"] == api]
+        have_avd = phone_avds(avds, api)
         if have_avd:
-            name, info = have_avd[0]
+            name, info = have_avd[0], avds[have_avd[0]]
             sysdir = info["config"].get("image.sysdir.1", "").strip("/")
             if root and sysdir and not os.path.isdir(os.path.join(root, sysdir)):
                 if not sdkm:
@@ -1044,7 +1095,8 @@ def cmd_setup(a):
             continue
         # an image already on disk: the configured variant, or any variant when none is configured
         have_img = root and (glob.glob(os.path.join(root, "system-images", f"android-{api}", image, abi()))
-                             or any_variant and glob.glob(os.path.join(root, "system-images", f"android-{api}", "*", abi())))
+                             or any_variant and [p_ for v in PHONE_IMAGES for p_ in
+                                                 glob.glob(os.path.join(root, "system-images", f"android-{api}", v, abi()))])
         pkg = f"system-images;android-{api};{image};{abi()}"
         if not have_img:
             if not sdkm:
@@ -1064,10 +1116,11 @@ def cmd_setup(a):
             if name in running:
                 print(f"skip {name}: the emulator is running, stop it and retry")
                 continue
-            steps.append((f"tune {name} ({', '.join(f'{k}={v}' for k, v in TUNE.items())})",
+            steps.append((f"tune {name} (raise to {', '.join(f'{k}={v}' for k, v in TUNE.items())}; bigger values stay)",
                           lambda p=info["path"]: tune_config(p)))
-    if a.maestro and not shutil.which("maestro"):
-        steps.append(("Maestro", ["brew", "install", "mobile-dev-inc/tap/maestro"]))
+    if a.maestro and not maestro_bin():
+        steps.append(("Maestro", ["brew", "install", "mobile-dev-inc/tap/maestro"] if shutil.which("brew")
+                      else ["sh", "-c", "curl -fsSL https://get.maestro.mobile.dev | bash"]))
     if a.hook:
         load_settings(strict=True)  # invalid JSON stops the plan before anything is installed
         have = guard_anywhere()
@@ -1084,9 +1137,19 @@ def cmd_setup(a):
             steps.append((f"adbm-eyes agent: link {rel(agent_link())} → {agent_target()}"
                           + (" (the file there goes to adbm-eyes.md.adbm-backup)" if os.path.lexists(agent_link())
                              and not os.path.islink(agent_link()) else ""), install_agent))
-    if a.android_cli and not shutil.which("android"):
-        steps.append(("Android CLI (adbm calls it with --no-metrics; do not run `android init`)",
-                      ["brew", "install", "--cask", "android-cli"]))
+    if a.android_cli and not android_cli():
+        if shutil.which("brew"):
+            steps.append(("Android CLI (adbm calls it with --no-metrics; do not run `android init`)",
+                          ["brew", "install", "--cask", "android-cli"]))
+        else:
+            print("Android CLI: no Homebrew — install it by hand: https://developer.android.com/tools/agents/android-cli")
+    if root and any(not callable(c) and c[0] == sdkm for _, c in steps) \
+            and not os.path.exists(os.path.join(root, "licenses", "android-sdk-license")):
+        msg = ("the Android SDK licenses are not accepted, so sdkmanager cannot download images. "
+               f"Show the person the licenses: {sdkm} --licenses — they accept them, then run setup again")
+        if a.yes:
+            die(msg)
+        print("warning: " + msg)
     if not steps:
         print("nothing to do: everything is installed")
         return 0
@@ -1101,7 +1164,10 @@ def cmd_setup(a):
         if callable(c):
             c()
         else:
-            code = subprocess.call(c)
+            try:
+                code = subprocess.call(c)
+            except FileNotFoundError:
+                die(f"step \"{d}\": {c[0]} not found")
             if code != 0:
                 die(f"step \"{d}\" failed with code {code}")
         print(f"done: {d}")
@@ -1117,6 +1183,8 @@ def emulator_start(avd, headless):
     cmd = [emu, "-avd", avd, "-no-snapshot-save", "-no-boot-anim"]
     if headless:
         cmd.append("-no-window")
+        if sys.platform.startswith("linux") and not glob.glob("/dev/dri/renderD*"):  # no GPU for hw.gpu.mode=host
+            cmd += ["-gpu", "swiftshader_indirect"]
     subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
 
 
@@ -1156,9 +1224,9 @@ def cmd_devices(a):
         for api in want:
             if any(d["api"] == api and d["emulator"] for d in devs):
                 continue
-            names = [n for n, i in avds.items() if i["api"] == api]
+            names = phone_avds(avds, api)
             if not names:
-                print(f"API {api}: no AVD → adbm setup --api {api} --yes")
+                print(f"API {api}: no phone AVD → adbm setup --api {api} --yes")
                 continue
             emulator_start(names[0], a.headless)
             todo.append(names[0])
@@ -1177,7 +1245,7 @@ def cmd_devices(a):
     print("API  serial                 name               screen")
     for d in devs:
         w, h = screen_size(d["serial"])
-        dens = ashell(d["serial"], "wm density").split()[-1] if d["api"] else "?"
+        dens = (ashell(d["serial"], "wm density").split() or ["?"])[-1] if d["api"] else "?"
         kind = "" if d["emulator"] else "  (physical)"
         print(f"{d['api']:<4} {d['serial'][:22]:<22} {d['name'][:18]:<18} {w}x{h} {dens}dpi{kind}")
     return 0
@@ -1245,7 +1313,7 @@ def prep_device(api, serial, theme=None, nav=None, font_scale=None, locale=None,
     if font_scale and not same_scale(have["font_scale"], font_scale):
         cmds.append(f"settings put system font_scale {font_scale}")
     if nav:
-        if api < 29:
+        if api and api < 29:
             if not reset:
                 notes.append(f"nav={nav} skipped: API {api} < 29")
             nav = None
@@ -1348,7 +1416,7 @@ def cmd_install(a):
     def one(api, s):
         code, out, err = adb(s, "install", "-r", "-d", "-t", a.apk, timeout=300)
         ok = code == 0 and "Success" in out
-        return ok, (out + err).strip().splitlines()[-1] if not ok else ""
+        return ok, ((out + err).strip().splitlines() or [f"adb install returned {code}"])[-1] if not ok else ""
 
     res = parallel(targets, one)
     bad = 0
@@ -1416,16 +1484,20 @@ def tap_how(a):
 def cmd_tap(a):
     api, s = pick(a)[0]
     sel = a.selector
-    if re.fullmatch(r"\d+,\d+", sel):
+    if sel.startswith("text:"):
+        sel = sel[5:]
+        if not sel:
+            die("text: needs the text to tap")
+    elif re.fullmatch(r"\d+,\d+", sel):
         x, y = map(int, sel.split(","))
         if not tap_xy(s, x, y, tap_how(a)):
             die(f"[{s}] input tap failed")
         session_log({"api": api, "op": "tap_xy", "x": x, "y": y, "screen": screen_size(s), "how": tap_how(a)})
         print(f"{api}: tap {x},{y}")
         return after_tap(api, s, a, None)
-    if sel.startswith("#"):
+    elif re.fullmatch(r"#\d+", sel):
         return annotate_tap(api, s, sel[1:], a)
-    if a.index is not None or re.fullmatch(r"\[\d+\]", sel):
+    if a.index is not None or re.fullmatch(r"\[\d+\]", sel) and sel == a.selector:
         idx = a.index if a.index is not None else int(sel[1:-1])
         try:
             nd = json.load(open(os.path.join(CACHE, f"ui-{s}.json")))[idx]
@@ -1904,7 +1976,7 @@ def cmd_clear_field(a):
 
 def type_maestro(serial, text):
     """Non-ASCII text: `input text` cannot type it, Maestro `inputText` can (checked on API 28, 33, 35)."""
-    mae = shutil.which("maestro")
+    mae = maestro_bin()
     if not mae:
         die("non-ASCII text is typed through Maestro, and it is not installed — adbm setup --maestro --yes")
     focus = ashell(serial, "dumpsys window | grep -m1 mCurrentFocus", timeout=15)
@@ -2069,7 +2141,7 @@ def cmd_thumb(a):
 
 
 def annotate_tap(api, s, n, a):
-    acli = shutil.which("android")
+    acli = android_cli()
     if not acli:
         die("no Android CLI — `adbm setup --android-cli --yes`, or tap by text from `adbm ui`")
     ref = os.path.join(CACHE, f"annotate-{s}.txt")
@@ -2091,7 +2163,7 @@ def annotate_tap(api, s, n, a):
 
 def cmd_annotate(a):
     Image = pil()
-    acli = shutil.which("android")
+    acli = android_cli()
     if not acli:
         die("no Android CLI — `adbm setup --android-cli --yes`. Without it: `adbm ui` + `adbm tap \"text\"`")
     api, s = pick(a)[0]
@@ -2265,7 +2337,7 @@ def maestro_failure(log):
 
 
 def cmd_run(a):
-    mae = shutil.which("maestro")
+    mae = maestro_bin()
     if not mae:
         die("no Maestro — `adbm setup --maestro --yes`")
     flow = os.path.abspath(a.flow)
@@ -2715,9 +2787,10 @@ def cmd_record(a):
     d = os.path.join(run, "video", f"api{api}", version)
     os.makedirs(d, exist_ok=True)
     base = os.path.join(d, slugify_name(a.name))
+    anim = ("window_animation_scale", "transition_animation_scale", "animator_duration_scale")
     if a.slow:
-        ashell(s, "; ".join(f"settings put global {k} {a.slow}" for k in
-                            ("window_animation_scale", "transition_animation_scale", "animator_duration_scale")))
+        was = {k: ashell(s, f"settings get global {k}") for k in anim}
+        ashell(s, "; ".join(f"settings put global {k} {a.slow}" for k in anim))
     adb(s, "shell", "rm -f /sdcard/adbm-rec.mp4")
     cmd_rc = None
     try:
@@ -2734,7 +2807,11 @@ def cmd_record(a):
         adb(s, "pull", "/sdcard/adbm-rec.mp4", base + ".mp4", timeout=120)
     finally:
         if a.slow:
-            prep_device(api, s, **load_pinned(api, s))
+            if all(re.fullmatch(r"\d+(\.\d+)?|null", v) for v in was.values()):
+                ashell(s, "; ".join(f"settings delete global {k}" if v == "null" else f"settings put global {k} {v}"
+                                    for k, v in was.items()))
+            else:
+                prep_device(api, s, **load_pinned(api, s))
     if not os.path.exists(base + ".mp4") or os.path.getsize(base + ".mp4") < 1000:
         die("the video was not recorded (screenrecord may not work on this image)")
     sheet = base + "-sheet.png"
@@ -3104,8 +3181,11 @@ def cmd_board(a):
             print(f"warning: {len(left)} changed frames without a verdict, e.g. "
                   + ", ".join(f"api{i['api']}/" + (i["group"] + "/" if i["group"] else "") + i["name"] for i in left[:3]))
     if a.open:
-        subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", os.path.join(out, "index.html")],
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", os.path.join(out, "index.html")],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except FileNotFoundError:
+            print(f"no xdg-open: open {rel(os.path.join(out, 'index.html'))} in a browser")
     return 0
 
 
@@ -3208,7 +3288,7 @@ def main():
     p = add("assert", cmd_assert, "is a text on the screen now: exit code 0 or 1", "one")
     p.add_argument("text")
     p = add("tap", cmd_tap, 'tap by text, content-desc, id; "x,y"; "[N]" from ui; "#N" from annotate', "one")
-    p.add_argument("selector")
+    p.add_argument("selector", help="text, x,y, [N] from adbm ui, #N from adbm annotate; text:<…> forces a text match")
     p.add_argument("--nth", type=int, default=0)
     p.add_argument("--index", type=int)
     p.add_argument("--retries", type=int, default=6)

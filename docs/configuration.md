@@ -25,7 +25,7 @@ as a line with `!`. A bad value is not applied, and the default stays in effect.
 ```ini
 [devices]
 apis = 28, 33, 35               # empty — the one running emulator, or API 35
-image = google_apis             # image variant for new AVDs; not set — any image already on disk
+image = google_apis             # image variant for new AVDs; not set — any phone image already on disk
 profile = pixel_8               # profile of new AVDs, see avdmanager list device
 ```
 
@@ -39,7 +39,7 @@ Which levels fit which change is in [skill/reference/api-matrix.md](../skill/ref
 
 No link to images is needed. `adbm setup` builds a plan: [`sdkmanager`](https://developer.android.com/tools/sdkmanager) downloads the missing images from
 Google's repository into `$ANDROID_HOME/system-images/`, and [`avdmanager`](https://developer.android.com/tools/avdmanager) creates [AVDs](https://developer.android.com/studio/run/emulator). `setup` skips a level
-that already has an AVD and reuses an image already on disk. If `image` or `profile` differs from an existing AVD,
+that already has a phone AVD (Wear, TV, Automotive and tablet AVDs do not count) and reuses an image already on disk. If `image` or `profile` differs from an existing AVD,
 `setup` says so and leaves the AVD alone: delete it to recreate it.
 
 To add a level, append the number to `apis` and run `adbm setup`. Without `--yes` it only prints the plan.
@@ -82,7 +82,7 @@ spend ~3350 tokens on one screenshot by accident.
   next to its target).
 
 The hook changes Claude Code for every project, so it runs only with `--yes` after the person agrees.
-`adbm doctor` reports the hook as `missing` until then. By hand, the block is:
+`adbm doctor` reports the hook as a warning (`!`) until then. By hand, the block is:
 
 ```json
 "hooks": {

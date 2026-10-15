@@ -36,7 +36,9 @@ logs/  notes.md  stats.json  builds.json
 index.html  manifest.js  00-summary.png
 ```
 
-Outside a run `shot` and `record` write frames to the project cache `~/.cache/adbm/projects/`. `diff` and `board` do not see them.
+`./gradlew clean` can delete `build/adbm` together with `build/`: the Android template's `clean` task deletes the root `build` folder. Copy a run you want to keep elsewhere.
+
+Outside a run `shot` and `record` write frames to the project cache `~/.cache/adbm/projects/` (`$ADBM_CACHE/projects/` if set). `diff` and `board` do not see them.
 
 ## Measuring tokens
 

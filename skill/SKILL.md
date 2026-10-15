@@ -45,6 +45,7 @@ A 1080×2400 image costs ~3350 tokens, a line of `adbm ui` ~15.
 1. **Navigate by text.** `ui`, then `tap "<text>"`. `tap` prints what appeared, went away and switches that flipped;
    `--expect` confirms the next screen in one line. Do not call `ui` after every tap.
    A tap by `x,y` or `#N` prints no change — add `--expect`. `[N]` from `ui` works only on that screen.
+   Text that looks like `x,y`, `#N` or `[N]` (a price "1,500"): `tap "text:1,500"`.
 2. **Do not open frames.** `shot` and `run` save frames to the run, not to the context. Never `Read` a file
    from `api*/`. `adbm diff` decides what changed; the `adbm-eyes` subagent looks at images.
 3. **One picture when nothing else helps:** `look` (540 px, ~860 tokens), `--small` (~380), `--crop` (up to

@@ -5,6 +5,18 @@
 [Claude Code](https://code.claude.com/docs/en/overview) [skill](https://code.claude.com/docs/en/skills) и CLI `adbm`: агент работает с Android-устройством и [эмуляторами](https://developer.android.com/studio/run/emulator) через [adb](https://developer.android.com/tools/adb)
 и тратит на это мало токенов. Агент вызывает команды `adbm` вместо сырого `adb`.
 
+## Зачем
+
+Приложение проверяет агент, а ты только смотришь итог.
+
+- **Агенту проще.** Одна команда `adbm` заменяет цепочку вызовов `adb`. Агент экономит токены на каждом шаге:
+  на навигации, на снимках экрана и на проверке. Поэтому он работает быстрее и дешевле.
+- **Всё автоматически.** Агент сам поднимает эмуляторы, ставит сборки, прогоняет сценарий и сравнивает кадры.
+- **Тебе проще проверить.** Ты открываешь один борд и видишь только то, что изменилось, с вердиктом
+  к каждому кадру. За минуту ты понимаешь, всё ли в порядке.
+
+## Что умеет
+
 - **Управление устройством.** Агент запускает и останавливает приложение, ходит по экрану,
   вводит текст (в том числе кириллицу), читает [logcat](https://developer.android.com/tools/logcat), выдаёт разрешения, копирует файлы.
 - **Несколько API сразу.** Агент поднимает эмуляторы нужных версий Android, ставит APK
@@ -49,10 +61,13 @@ ADBM не заменяет эти инструменты, а связывает 
 
 Нужны Android SDK, Python 3.9+ с Pillow, для сценариев и ввода не-ASCII через `adbm type` — [Maestro](https://github.com/mobile-dev-inc/Maestro), для видео — ffmpeg.
 
+Платформы: macOS проверена. Linux должен работать: эмулятору нужен `/dev/kvm`. Windows не поддерживается, WSL не проверялся.
+
 ```bash
-git clone <repo> ~/dev/adbm
+git clone https://github.com/StasPotapov/adbm.git ~/dev/adbm
+mkdir -p ~/.claude/skills
 ln -s ~/dev/adbm/skill ~/.claude/skills/adbm
-python3 -m pip install Pillow
+python3 -m pip install Pillow   # Python из Homebrew: brew install pillow; Debian/Ubuntu: sudo apt install python3-pil
 ~/dev/adbm/skill/bin/adbm setup --hook --agent --yes   # хук-ограждение и агент adbm-eyes
 ~/dev/adbm/skill/bin/adbm doctor
 ```

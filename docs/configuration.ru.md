@@ -25,7 +25,7 @@ adbm config --init --project                   # файл проекта: клю
 ```ini
 [devices]
 apis = 28, 33, 35               # пусто — один запущенный эмулятор или API 35
-image = google_apis             # вариант образа для новых AVD; не задан — любой уже скачанный
+image = google_apis             # вариант образа для новых AVD; не задан — любой уже скачанный телефонный
 profile = pixel_8               # профиль новых AVD, см. avdmanager list device
 ```
 
@@ -39,7 +39,7 @@ profile = pixel_8               # профиль новых AVD, см. avdmanage
 
 Ссылка на образы не нужна. `adbm setup` строит план: [`sdkmanager`](https://developer.android.com/tools/sdkmanager) скачивает недостающие образы из
 репозитория Google в `$ANDROID_HOME/system-images/`, [`avdmanager`](https://developer.android.com/tools/avdmanager) создаёт [AVD](https://developer.android.com/studio/run/emulator). Уровень, для которого
-AVD уже есть, `setup` пропускает. Уже скачанный образ он использует повторно. Если `image` или `profile`
+уже есть телефонный AVD, `setup` пропускает. AVD для Wear, TV, Automotive и планшетов не считаются. Уже скачанный образ он использует повторно. Если `image` или `profile`
 не совпадают с существующим AVD, `setup` об этом пишет, а AVD не трогает: чтобы пересоздать, удали его.
 
 Чтобы добавить уровень, допиши число в `apis` и запусти `adbm setup`. Без `--yes` он только печатает план.
@@ -82,7 +82,7 @@ Effort `high` в этом прогоне не помог: субагент по�
   (если это симлинк — рядом с его целью).
 
 Хук меняет Claude Code во всех проектах, поэтому ставится только с `--yes` после согласия человека.
-До тех пор `adbm doctor` показывает его как `missing`. Руками блок такой:
+До тех пор `adbm doctor` показывает его как предупреждение (`!`). Руками блок такой:
 
 ```json
 "hooks": {

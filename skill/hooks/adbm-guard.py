@@ -2,15 +2,18 @@
 """PreToolUse hook for Read: keeps full-size adbm frames and raw UI dumps out of the context.
 
 Denies a Read of a frame `build/adbm/<run>/api<N>/**.png` (or a frame shot outside a run, in
-`~/.cache/adbm/projects/<id>/shots/`) and of a raw `uiautomator` XML dump
+`$ADBM_CACHE/projects/<id>/shots/`, by default `~/.cache/adbm`) and of a raw `uiautomator` XML dump
 `logs/ui-api<N>-*.xml`. The contact sheet, diff crops, diffs and `look/` images pass: they are
 downscaled. A diff made with `adbm diff --full` has the same name as a 540 px one and passes too.
 """
 import json
+import os
 import re
 import sys
 
-FRAME = re.compile(r"/(?:build/adbm/[^/]+|\.cache/adbm/projects/[^/]+/shots)/api\d+/.+\.png$")
+CACHE = re.escape(os.path.realpath(os.path.expanduser(os.environ.get("ADBM_CACHE", "~/.cache/adbm"))))
+FRAME = re.compile(r"(?:/build/adbm/[^/]+|/\.cache/adbm/projects/[^/]+/shots|^" + CACHE
+                   + r"/projects/[^/]+/shots)/api\d+/.+\.png$")
 XML = re.compile(r"/logs/ui-api\d+-[^/]*\.xml$")
 
 
@@ -20,7 +23,7 @@ def main():
     except Exception:
         return 0
     path = str((data.get("tool_input") or {}).get("file_path") or "")
-    if FRAME.search(path):
+    if FRAME.search(path) or path and FRAME.search(os.path.realpath(path)):
         why = ("adbm: full-size frame (~3350 tokens). Read the contact sheet, diff/*.crop.png or the "
                "540 px diff, or make a small copy: adbm thumb <frame> [--crop x0,y0,x1,y1].")
     elif XML.search(path):
