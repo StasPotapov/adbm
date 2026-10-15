@@ -63,14 +63,21 @@ Append a section to `<run>/notes.md` (create the file if it does not exist):
 ```markdown
 ## adbm-eyes verdict
 
+Summary: The sheet now sits above the navbar on API 33 and 35 as intended. On API 28 the bottom 40 px of the list go under the navbar in light theme.
+
 - EXPECTED api35/threebutton/dark/1-peek — the "Close" button moved above the navbar, as intended
 - PROBLEM api28/threebutton/light/2-expanded — the bottom 40 px of the list went under the navbar
 - REVIEW api33/gestural/light/3-full — bottom padding is 8 px instead of 16; the task does not say which is right
 ```
 
-One line per frame, in the format `EXPECTED|PROBLEM|REVIEW api<N>/<group>/<name> — what is visible`.
-The board reads these lines and colours the frames. Do not merge similar frames:
-every frame gets its own line. Write the descriptions in the language of the task.
+- **`Summary:`** — one line, 2–3 sentences: what changed overall, what is broken and on which API levels.
+  The board shows it in large type at the top, so a person reads it first.
+- **Frame lines** — one per frame and API level, in the format
+  `EXPECTED|PROBLEM|REVIEW api<N>/<group>/<name> — what is visible`. The board shows the text
+  under the frame. Do not merge similar frames: every frame gets its own line.
+
+Keep the keywords `Summary:`, `EXPECTED`, `PROBLEM`, `REVIEW` in English. Write the descriptions
+in the language of the task.
 
 Return at most 10 lines to the main agent:
 1. Summary: "no problems" or "N problems", how many frames were checked, how many expected and how many review.

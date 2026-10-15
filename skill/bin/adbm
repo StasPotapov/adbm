@@ -1668,22 +1668,32 @@ VERDICT_COLOR = {"expected": (120, 210, 120), "review": (240, 190, 80), "problem
 
 
 def read_verdicts(run):
-    """notes.md lines like `PROBLEM api35/group/name — …` → {(group,name): verdict}."""
-    res = {}
+    """Parse the adbm-eyes section of notes.md.
+
+    Lines `PROBLEM api35/group/name — text` give a verdict per frame and API level
+    (no `apiN/` — for every level); a `Summary: …` line gives the overall verdict.
+    Returns (worst verdict per (group, name), {(group, name, api): (verdict, text)}, summary, full text).
+    """
+    worst, per_api, summary = {}, {}, ""
     p = os.path.join(run, "notes.md")
     if not os.path.exists(p):
-        return res, ""
+        return worst, per_api, summary, ""
     text = open(p).read()
     for line in text.splitlines():
-        m = re.match(r"\s*[-*]?\s*(" + "|".join(VERDICTS) + r")\s+(?:api\d+/)?(\S+)", line, re.I)
+        sm = re.match(r"\s*\**summary\**:\s*(.+)", line, re.I)
+        if sm:
+            summary = sm.group(1).strip()
+            continue
+        m = re.match(r"\s*[-*]?\s*(" + "|".join(VERDICTS) + r")\s+(?:api(\d+)/)?(\S+)\s*(?:[—–-]+\s*(.*))?", line, re.I)
         if m:
             v = VERDICTS[m.group(1).upper()]
-            path = m.group(2).rstrip(":").rsplit("/", 1)
+            path = m.group(3).rstrip(":").rsplit("/", 1)
             key = (path[0], path[1]) if len(path) == 2 else ("", path[0])
+            per_api[key + (int(m.group(2)) if m.group(2) else None,)] = (v, (m.group(4) or "").strip())
             # with several API levels a frame keeps its worst verdict
-            if VERDICT_RANK[v] >= VERDICT_RANK.get(res.get(key), -1):
-                res[key] = v
-    return res, text
+            if VERDICT_RANK[v] >= VERDICT_RANK.get(worst.get(key), -1):
+                worst[key] = v
+    return worst, per_api, summary, text
 
 
 def cmd_board(a):
@@ -1697,7 +1707,7 @@ def cmd_board(a):
         die(f"no api*/… frames in {rel(run)}")
     keys = sorted(frames, key=frame_sort_key)
     apis = sorted({api for k in keys for api in frames[k]})
-    verdicts, notes = read_verdicts(run)
+    verdicts, per_api, verdict_summary, notes = read_verdicts(run)
     diffs = {}
     try:
         for r in json.load(open(os.path.join(run, "diff", "diff.json"))):
@@ -1716,6 +1726,8 @@ def cmd_board(a):
                 "diff": os.path.relpath(os.path.join(run, d["diff"]), out) if d and d.get("diff") else None,
                 "pct": d["pct"] if d else None, "same": d["same"] if d else None,
                 "ui": d["ui"] if d else [], "verdict": verdicts.get(k),
+                "api_verdict": (per_api.get(k + (api,)) or per_api.get(k + (None,)) or (None, ""))[0],
+                "verdict_text": (per_api.get(k + (api,)) or per_api.get(k + (None,)) or (None, ""))[1],
             })
     pairs = len(items)
     summary = []
@@ -1749,7 +1761,8 @@ def cmd_board(a):
         "run": os.path.basename(run.rstrip("/")), "path": run, "created": dt.datetime.now().isoformat(timespec="seconds"),
         "apis": apis, "groups": sorted({k[0] for k in keys}), "items": items, "notes": notes,
         "stats": stats, "builds": builds,
-        "summary": [os.path.relpath(p, out) for p, _ in summary], "version": VERSION,
+        "summary": [os.path.relpath(p, out) for p, _ in summary], "verdict_summary": verdict_summary,
+        "version": VERSION,
     }
     with open(os.path.join(out, "manifest.js"), "w") as f:
         f.write("window.MANIFEST = " + json.dumps(manifest, ensure_ascii=False) + ";\n")

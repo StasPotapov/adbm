@@ -51,13 +51,20 @@ main { padding: 16px; max-width: 1800px; margin: 0 auto; }
 .row { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 12px; box-shadow: var(--shadow); }
 .row-head { display: flex; gap: 8px; align-items: baseline; padding: 8px 12px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .row-head b { font-weight: 600; } .row-head .grp { color: var(--muted); }
-.badge { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 4px; color: #fff; }
+.badge { font-size: 13px; font-weight: 700; padding: 2px 8px; border-radius: 4px; color: #fff; text-transform: uppercase; letter-spacing: .02em; }
+.verdict { margin-bottom: 16px; }
+.verdict .sum { font-size: 17px; line-height: 1.5; margin: 0 0 10px; }
+.verdict .counts { display: flex; flex-wrap: wrap; gap: 8px; }
+.vt { font-size: 13px; line-height: 1.4; margin-top: 6px; max-width: calc(var(--thumb, 150px) * 2 + 6px); }
+.vt .badge { font-size: 11px; padding: 1px 6px; margin-right: 6px; }
+.dlg-verdict { padding: 8px 16px; font-size: 15px; border-bottom: 1px solid var(--line); }
+.dlg-verdict:empty { display: none; }
 .badge.ok { background: var(--pass); } .badge.bug { background: var(--fail); } .badge.look { background: var(--warn); }
 .badge.same { background: var(--same); }
 .cells { display: flex; gap: 14px; padding: 10px 12px; overflow-x: auto; }
 .cell { flex: 0 0 auto; }
 .cell-head { font-size: 12px; color: var(--muted); margin-bottom: 4px; display: flex; gap: 8px; }
-.cell-head .pct { margin-left: auto; } .pct.chg { color: var(--fail); } .pct.same { color: var(--same); }
+.cell-head .pct { margin-left: auto; } .pct.chg { color: var(--accent); } .pct.same { color: var(--same); }
 .pair { display: flex; gap: 3px; cursor: zoom-in; }
 .pair figure { margin: 0; text-align: center; }
 .pair img, .pair .none { width: var(--thumb, 150px); display: block; border-radius: 4px; background: var(--chip); }
@@ -93,8 +100,9 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
   <button class="chip" id="theme" title="Theme">◐</button>
 </header>
 <main>
+  <section class="card verdict" id="verdict" hidden><h2>Verdict</h2><p class="sum" id="vsum"></p><div class="counts" id="vcounts"></div></section>
   <section class="top">
-    <div class="card"><h2>Notes and verdict</h2><div class="notes" id="notes"></div></div>
+    <div class="card"><h2>Notes</h2><div class="notes" id="notes"></div></div>
     <div class="card"><h2>Run</h2><dl class="kv" id="meta"></dl><div class="summary" id="summary" style="margin-top:8px"></div></div>
   </section>
   <section id="rows"></section>
@@ -107,6 +115,7 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
     <span style="color:var(--muted);font-size:12px">← → next frame · Esc close</span>
     <button class="chip" id="close">close</button>
   </div>
+  <div class="dlg-verdict" id="dlgVerdict"></div>
   <div class="dlg-body" id="dlgBody"></div>
 </dialog>
 <script>
@@ -137,6 +146,20 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
   const VCLS = { expected: "ok", problem: "bug", review: "look" };
   $("#notes").innerHTML = M.notes ? esc(M.notes).replace(/\b(EXPECTED|PROBLEM|REVIEW)\b/g, (v) => `<span class="${VCLS[v.toLowerCase()]}">${v}</span>`)
     : '<span style="color:var(--muted)">no notes.md yet — the adbm-eyes subagent writes the verdict</span>';
+
+  const cnt = { problem: 0, review: 0, expected: 0, unchanged: 0 };
+  for (const i of M.items) {
+    if (i.same) cnt.unchanged++;
+    else if (i.api_verdict) cnt[i.api_verdict]++;
+  }
+  const judged = cnt.problem + cnt.review + cnt.expected;
+  if (M.verdict_summary || judged) {
+    $("#verdict").hidden = false;
+    $("#vsum").textContent = M.verdict_summary || "";
+    const CCLS = { problem: "bug", review: "look", expected: "ok", unchanged: "same" };
+    $("#vcounts").innerHTML = Object.entries(cnt).filter(([, n]) => n)
+      .map(([k, n]) => `<span class="badge ${CCLS[k]}">${k} ${n}</span>`).join("");
+  }
 
   const apiOn = new Set(M.apis);
   $("#apis").innerHTML = M.apis.map((a) => `<button class="chip" data-api="${a}" aria-pressed="true">API ${a}</button>`).join("");
@@ -182,7 +205,8 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
             : `<figure><div class="none">none</div><figcaption>${cap}</figcaption></figure>`;
           const pair = (i.before || !i.after ? fig(i.before, "before") : "") + fig(i.after, "after");
           const ui = i.ui && i.ui.length ? `<div class="ui">${esc(i.ui.slice(0, 4).join(" · "))}</div>` : "";
-          return `<div class="cell"><div class="cell-head"><span>API ${i.api}</span>${pct}</div><div class="pair" data-i="${idx}">${pair}</div>${ui}</div>`;
+          const vt = i.api_verdict ? `<div class="vt"><span class="badge ${VCLS[i.api_verdict]}">${esc(i.api_verdict)}</span>${esc(i.verdict_text || "")}</div>` : "";
+          return `<div class="cell"><div class="cell-head"><span>API ${i.api}</span>${pct}</div><div class="pair" data-i="${idx}">${pair}</div>${vt}${ui}</div>`;
         }).join("");
         const same = r.items.every((i) => i.same === true);
         const badge = r.verdict ? `<span class="badge ${VCLS[r.verdict] || ""}">${esc(r.verdict)}</span>`
@@ -212,6 +236,7 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
     if (!modes.some((m) => m[0] === mode)) mode = "side";
     $("#modes").innerHTML = modes.map(([m, t]) => `<button class="chip" data-mode="${m}" aria-pressed="${m === mode}">${t}</button>`).join("");
     $("#dlgTitle").textContent = `API ${i.api} · ${i.group ? i.group + " / " : ""}${i.name}` + (i.pct != null ? ` · ${i.same ? "unchanged" : i.pct + "%"}` : "");
+    $("#dlgVerdict").innerHTML = i.api_verdict ? `<span class="badge ${VCLS[i.api_verdict]}">${esc(i.api_verdict)}</span> ${esc(i.verdict_text || "")}` : "";
     const body = $("#dlgBody");
     if (mode === "side") {
       body.innerHTML = [["before", i.before], ["after", i.after]].filter((x) => x[1])
