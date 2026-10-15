@@ -309,19 +309,19 @@ class ToolsTest(unittest.TestCase):
         os.environ["XDG_CONFIG_HOME"] = xdg
         try:
             cfg, problems = adbm.load_config()
-            self.assertEqual(cfg["adbm-eyes"], {"model": ("sonnet", "default"), "effort": ("", "default")})
-            open(user, "w").write(adbm.CONFIG_TEMPLATE.replace("model = sonnet", "model = haiku   # cheap"))
-            open(proj, "w").write("[adbm-eyes]\neffort = low\n")
+            self.assertEqual(cfg["adbm-eyes"], {"model": ("haiku", "default"), "effort": ("low", "default")})
+            open(user, "w").write(adbm.CONFIG_TEMPLATE.replace("model = haiku", "model = sonnet   # sharper"))
+            open(proj, "w").write("[adbm-eyes]\neffort = medium\n")
             cfg, problems = adbm.load_config()
             self.assertEqual(problems, [])
-            self.assertEqual(cfg["adbm-eyes"], {"model": ("haiku", "user"), "effort": ("low", "project")})
+            self.assertEqual(cfg["adbm-eyes"], {"model": ("sonnet", "user"), "effort": ("medium", "project")})
             open(proj, "w").write("[DEFAULT]\nmodel = opus\n[adbm-eyes]\neffort = High\n")
             cfg, problems = adbm.load_config()
-            self.assertEqual(cfg["adbm-eyes"], {"model": ("haiku", "user"), "effort": ("high", "project")})
+            self.assertEqual(cfg["adbm-eyes"], {"model": ("sonnet", "user"), "effort": ("high", "project")})
             self.assertEqual(len(problems), 1)
             open(proj, "w").write("[adbm-eyes]\neffort = turbo\nmodel = claude-x\nmodl = x\n[eyes]\n")
             cfg, problems = adbm.load_config()
-            self.assertEqual(cfg["adbm-eyes"], {"model": ("haiku", "user"), "effort": ("", "user")})
+            self.assertEqual(cfg["adbm-eyes"], {"model": ("sonnet", "user"), "effort": ("low", "user")})
             self.assertEqual(len(problems), 4)
         finally:
             if old is None:

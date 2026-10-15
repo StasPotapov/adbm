@@ -1,7 +1,8 @@
 ---
 name: adbm-eyes
 description: Looks at the frames of an adbm run (contact sheet, diff crops, downscaled frames) and writes an EXPECTED/PROBLEM/REVIEW verdict for every changed frame into notes.md. Started by the adbm skill after `adbm diff` and `adbm board`, so that images stay out of the main agent's context.
-model: sonnet
+model: haiku
+effort: low
 tools: Read, Write, Edit, Bash, Glob
 ---
 

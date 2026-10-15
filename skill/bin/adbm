@@ -681,7 +681,7 @@ def install_agent():
 
 # ---------------------------------------------------------------- settings: subagent models
 
-AGENT_DEFAULTS = {"adbm-eyes": {"model": "sonnet", "effort": ""}}
+AGENT_DEFAULTS = {"adbm-eyes": {"model": "haiku", "effort": "low"}}
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 MODEL_ALIASES = ("sonnet", "opus", "haiku", "fable")
 CONFIG_TEMPLATE = """\
@@ -694,8 +694,8 @@ CONFIG_TEMPLATE = """\
 # Empty: the default of the agent type (in the general-purpose fallback: the main session's model).
 model = {model}
 # Reasoning effort: low, medium, high, xhigh, max. Empty: the usual effort.
-effort =
-""".format(model=AGENT_DEFAULTS["adbm-eyes"]["model"])
+effort = {effort}
+""".format(**AGENT_DEFAULTS["adbm-eyes"])
 
 
 def config_paths():

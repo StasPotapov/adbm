@@ -20,6 +20,62 @@ Claude Code skill и CLI `adbm`: агент работает с Android-устр
 - **кадры смотрит субагент** на более дешёвой модели и возвращает до 10 строк;
 - **если без картинки никак** — `adbm look` отдаёт кадр 540 px (~860 токенов) или фрагмент.
 
+## Как это работает
+
+Пример — реальный прогон в приложении MyPassBox. В нём сменили тему по умолчанию: была «Системная»,
+стала «Тёмная». Агент проверил три экрана на API 33 и 35 при светлой и тёмной системной теме.
+
+1. **Сборки.** `adbm install` ставит сборку «до» на все эмуляторы сразу, позже — сборку «после».
+2. **Сценарий.** `adbm run` прогоняет один Maestro flow на всех API параллельно, в каждой ячейке
+   матрицы `theme=light,dark`. Кадры ложатся в папку прогона, в контекст агента они не попадают.
+3. **Дифф.** `adbm diff` сравнивает пары «до | после» по пикселям и пишет одну строку на пару:
+
+   ```
+   api33/dark/2-settings: 2.5% @45,483-1035,582
+   api35/dark/2-settings: ≈ api33: the same change
+   api33/light/1-empty-list: 94.4% @0,96-1080,2274 · status bar differs
+   api35/light/1-empty-list: ≈ api33: the same change
+   …
+   pairs 12, changed 8 (4 same as another API), unchanged 4 · diff images: diff/
+   ```
+
+   Неизменённые пары дальше никто не смотрит. Значок `≈` значит, что на другом API пара изменилась так же.
+   Для небольшого изменения дифф вырезает кроп: «до» сверху, «после» снизу. Здесь это переключатель темы:
+
+   ![Кроп диффа: переключатель темы до и после](docs/img/diff-crop.png)
+
+   Статус-бар дифф сравнивает отдельно. На этом кропе видна ошибка: в «после» тёмные часы и иконки на тёмном фоне.
+
+   ![Кроп статус-бара до и после](docs/img/diff-statusbar.png)
+
+4. **Вердикт.** Субагент `adbm-eyes` смотрит коллаж и кропы по чек-листу задачи. На каждую изменённую пару
+   он пишет вердикт: EXPECTED — так задумано, PROBLEM — дефект, REVIEW — нужен взгляд человека.
+   Основной агент получает до 10 строк текста и не открывает ни одной картинки.
+5. **Борд.** `adbm board` собирает HTML-страницу: итог, вердикты, пары кадров с процентом изменения,
+   фильтр по API и режим «changed only».
+
+![Борд прогона: итог, вердикты и пара с PROBLEM](docs/img/board.png)
+
+Коллаж `00-summary.png` собирает все изменённые пары на одной картинке. Его смотрит субагент, а человеку
+он нужен для быстрого взгляда:
+
+![Коллаж до и после](docs/img/summary.png)
+
+Итог прогона: тёмная тема по умолчанию работает. Но при светлой системной теме часы и иконки статус-бара
+стали тёмными на тёмном фоне, а навбар остался светлым. Так на обоих API.
+
+Команды такого прогона:
+
+```bash
+adbm new mypassbox-dark-default
+adbm install before.apk --as before --api 33,35
+adbm run .adbm/flows/theme-default.yaml --api 33,35 --as before --matrix theme=light,dark
+adbm install after.apk --as after --api 33,35
+adbm run .adbm/flows/theme-default.yaml --api 33,35 --as after --matrix theme=light,dark
+adbm diff
+adbm board --open
+```
+
 ## Что умеет
 
 | Команда | Что делает |
@@ -80,8 +136,8 @@ CLI работает и без Claude Code: `ln -s ~/dev/adbm/skill/bin/adbm /us
 }
 ```
 
-**Модели субагентов.** Субагент `adbm-eyes` по умолчанию работает на `sonnet`, effort не задан:
-у агента остаётся его обычный effort. Чтобы поменять модель или effort, создай файл настроек и поправь его:
+**Модели субагентов.** Субагент `adbm-eyes` по умолчанию работает на `haiku` с effort `low`.
+На боевом прогоне ниже он поставил тот же вердикт, что `sonnet`, а effort `high` не помог. Чтобы поменять модель или effort, создай файл настроек и поправь его:
 
 ```bash
 adbm config --init            # ~/.config/adbm/config.ini ($XDG_CONFIG_HOME, если задан), для всех проектов
@@ -91,8 +147,8 @@ adbm config                   # итоговые значения и откуд�
 
 ```ini
 [adbm-eyes]
-model = haiku     # sonnet, opus, haiku, fable; пусто — модель типа агента
-effort = low      # low, medium, high, xhigh, max; пусто — обычный effort
+model = sonnet    # sonnet, opus, haiku, fable; пусто — модель типа агента
+effort = medium   # low, medium, high, xhigh, max; пусто — обычный effort
 ```
 
 Значения из файла проекта перекрывают пользовательский файл. Если тип `adbm-eyes` не установлен,
@@ -113,18 +169,6 @@ python3 -m unittest discover tests
 
 Устройство не нужно: тесты проверяют разбор дерева UI, матрицу, дифф, вердикты, `save-flow`,
 хук-ограждение и замер сессии на фикстурах из реального прогона. Без Pillow тесты картинок пропускаются.
-
-## Пример
-
-```bash
-adbm new sheet-insets
-adbm install before.apk --as before --api 28,33,35
-adbm run .adbm/flows/sheet.yaml --api 28,33,35 --matrix "nav=threebutton,gestural" "theme=light,dark"
-adbm install after.apk --as after --api 28,33,35
-adbm run .adbm/flows/sheet.yaml --api 28,33,35 --as after --matrix "nav=threebutton,gestural" "theme=light,dark"
-adbm diff
-adbm board --open
-```
 
 ## Почему не …
 
