@@ -4,12 +4,15 @@
 
 ## API levels
 
+The project's set is `[devices] apis` (`adbm config`); commands without `--api` use it. When it is empty,
+ask the person and write the answer with `adbm config --set devices.apis=… --project` (`SKILL.md`, step 2).
+
 Find `minSdk` and `targetSdk`: `grep -rn "minSdk\|targetSdk"` over `build.gradle*` and
 `libs.versions.toml`. Do not offer emulators below `minSdk`. `adbm install` also reads `minSdk` from
 the APK and skips such devices, and so does `adbm run`. If `targetSdk` ≥ 35, edge-to-edge is enforced —
 a reason to include API 35. Example of an offer: "Sheet insets → 28, 33, 35: edge-to-edge is enforced on 35".
 
-`adbm devices --start 28,33,35` boots missing emulators and waits until the package manager answers.
+`adbm devices --start` (or `--start 28,33,35`) boots missing emulators and waits until the package manager answers.
 
 ## Builds
 

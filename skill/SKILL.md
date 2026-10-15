@@ -30,7 +30,7 @@ omit the prefix: run `"$ADBM" <command>`, and set the variable in every Bash cal
 | install, launch, stop, clear data | `install <apk>`, `launch <pkg>`, `stop`, `clear`, `uninstall` |
 | logs, crash | `log` (the app's process), `log --crash`, `log --grep <re>` |
 | deep link, permission, file | `open <uri>`, `perm <pkg> grant CAMERA`, `push`, `pull` |
-| which devices, boot an emulator | `devices`, `devices --start 33,35`, `devices --stop 33` |
+| which devices, boot an emulator | `devices`, `devices --start` (the project's API levels) or `--start 33,35`, `devices --stop 33` |
 | device theme, navigation mode, font scale | `prep --theme dark`, `--nav gestural`, `--font-scale 1.3` |
 | how it looks, before/after, several API levels, themes | "Visual check" below |
 
@@ -58,8 +58,11 @@ A 1080×2400 image costs ~3350 tokens, a line of `adbm ui` ~15.
 
 1. **Environment.** `doctor`; rows that block the task — show the fix and ask; `setup` without `--yes` only plans.
    `setup --hook` / `--agent` change the person's Claude Code settings: run them with `--yes` only after a clear yes.
-2. **API levels.** Find `minSdk`/`targetSdk` in `build.gradle*`. Default — API 35 only. For insets, navbar,
-   theme, permissions, back navigation offer a set with reasons from `reference/api-matrix.md` and wait.
+2. **API levels.** `config` shows the project's set: `devices  apis=…`; commands without `--api` use it.
+   `apis=-` (first check in the project): find `minSdk`/`targetSdk` in `build.gradle*`, offer a set with
+   reasons from `reference/api-matrix.md` and wait for the answer. Then `config --set devices.apis=<list> --project`
+   and `setup`: its plan downloads only the missing system images and AVDs. A change that needs other
+   levels (insets, theme, permissions) — offer them and pass `--api` for this check only.
 3. **Run and builds.** `new <slug>`. Comparing builds: `install <before.apk> --as before --api …`, "before" frames,
    then `install <after.apk>` and all "after" frames. One build as installed: frames only, `diff` says `after only`.
 4. **Frames.** By hand for 1–2 frames on 1–2 API levels: `prep`, `launch`, `tap`, `shot <name>`.

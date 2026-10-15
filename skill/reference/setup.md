@@ -14,8 +14,10 @@
 | `adbm-eyes` agent (Claude Code) | the subagent with 5 tools, a small start context | `adbm setup --agent --yes`: a link in `~/.claude/agents/`; a plugin install has it |
 
 `adbm doctor` checks all of this and prints a fix command for every row.
-Model and effort of `adbm-eyes`: `adbm config` (`--init` writes `~/.config/adbm/config.ini`,
-`--init --project` — `.adbm/config.ini`; the project file wins).
+Settings: `adbm config` shows the model and effort of `adbm-eyes` and the project's API levels.
+`--set devices.apis=28,33,35 --project` writes `.adbm/config.ini`, without `--project` — `~/.config/adbm/config.ini`;
+the project file wins. `--init` writes a file with all keys and comments; in the project file the keys
+are commented out, so it overrides nothing until you set a value.
 `doctor` itself installs nothing.
 
 ## `adbm setup`
@@ -23,15 +25,18 @@ Model and effort of `adbm-eyes`: `adbm config` (`--init` writes `~/.config/adbm/
 Without `--yes` the command only prints the plan. Show the plan to the person and wait for consent.
 
 ```bash
-adbm setup --api 28,33,35            # plan: system images, AVDs, tuning
-adbm setup --api 28,33,35 --yes      # run it
+adbm setup                           # plan for the API levels of the config: missing images, AVDs, tuning
+adbm setup --api 28,33,35 --yes      # other levels, run it
 adbm setup --tune --yes              # fix config.ini of existing AVDs
 adbm setup --maestro --android-cli --yes
 ```
 
-- **System image** — `system-images;android-N;google_apis;<abi>`: `arm64-v8a` on Apple Silicon, `x86_64` otherwise.
-  A `google_apis` image allows `adb root`, a `playstore` image does not.
-- **AVD** is created as `adbm_API_N` on the `pixel_8` profile.
+- **What is skipped:** an API level that already has an AVD. An image already on disk is reused:
+  the variant from `[devices] image`, or any variant when the config does not set one.
+- **System image** — `system-images;android-N;<image>;<abi>`, downloaded by `sdkmanager` from Google's repository
+  into `$ANDROID_HOME/system-images/`: `arm64-v8a` on Apple Silicon, `x86_64` otherwise.
+  `image` is `google_apis` by default: it allows `adb root`, a `google_apis_playstore` image does not.
+- **AVD** is created as `adbm_API_N` on the `[devices] profile` profile, `pixel_8` by default.
 - **Tuning** of `config.ini`: `hw.ramSize=4096`, `vm.heapSize=576`, `hw.cores=4`,
   `disk.dataPartition.size=8G`, `hw.keyboard=yes`, `hw.gpu.mode=host`.
   With 2 GB of RAM an API 35 emulator is slow, and Maestro hits timeouts.

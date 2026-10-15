@@ -81,9 +81,9 @@ adbm board --open
 | Команда | Что делает |
 |---|---|
 | `adbm doctor` | проверяет SDK, adb, emulator, Java, Maestro, Pillow, AVD и их `config.ini`, хук-ограждение, агента `adbm-eyes` и модели субагентов |
-| `adbm config` | модель и effort субагентов из `~/.config/adbm/config.ini` и `.adbm/config.ini`; `--init` пишет файл со значениями по умолчанию |
+| `adbm config` | настройки из `~/.config/adbm/config.ini` и `.adbm/config.ini`: модель и effort субагента, уровни API; `--set devices.apis=28,33,35 --project` записывает значение |
 | `adbm setup --api 28,33,35` | образы, AVD с 4 ГБ памяти, Maestro, Android CLI; `--hook`, `--agent` для Claude Code; без `--yes` — только план |
-| `adbm devices --start 28,33,35` | поднимает эмуляторы, печатает API → serial → экран |
+| `adbm devices --start [28,33,35]` | поднимает эмуляторы (без значения — из `[devices] apis`), печатает API → serial → экран |
 | `adbm prep` | анимации 0, demo mode статус-бара, тема, навигация, шрифт |
 | `adbm new <slug>`, `adbm status` | начать папку прогона, показать текущий прогон и счётчики |
 | `adbm install <apk> [--as before\|after]` | ставит APK на все API параллельно (по умолчанию `after`) |
@@ -140,6 +140,27 @@ CLI работает и без Claude Code: `ln -s ~/dev/adbm/skill/bin/adbm /us
 Claude Code потратила на `adbm`: символы вывода по командам и прочитанные картинки.
 `adbm status` даёт ту же оценку для текущего прогона из `stats.json`.
 
+## Уровни API
+
+Список API для проверок хранится в файле проекта `.adbm/config.ini`. Команды без `--api` берут его, и им нужны все эмуляторы из списка: подними их `adbm devices --start`.
+Общий список для всех проектов можно задать в `~/.config/adbm/config.ini`: пустой `apis` в проекте его не перекрывает.
+
+```ini
+[devices]
+apis = 28, 33, 35               # пусто — один запущенный эмулятор или API 35
+image = google_apis             # вариант образа для новых AVD; не задан — любой уже скачанный
+profile = pixel_8               # профиль новых AVD, см. avdmanager list device
+```
+
+При первой проверке в проекте `apis` пустой. Агент смотрит `minSdk` приложения, предлагает уровни
+с причинами и ждёт ответа. Затем он записывает ответ: `adbm config --set devices.apis=28,33,35 --project`.
+
+Ссылка на образы не нужна. `adbm setup` строит план: `sdkmanager` скачивает недостающие образы из
+репозитория Google в `$ANDROID_HOME/system-images/`, `avdmanager` создаёт AVD. Уровень, для которого
+AVD уже есть, `setup` пропускает. Уже скачанный образ он использует повторно. Если `image` или `profile`
+не совпадают с существующим AVD, `setup` об этом пишет, а AVD не трогает: чтобы пересоздать, удали его. `adbm devices --start`
+без значения поднимает эмуляторы из списка. Чтобы добавить уровень, допиши число в `apis` и запусти `adbm setup`.
+
 ## Модель субагента
 
 Субагент `adbm-eyes` по умолчанию работает на `haiku` с effort `low`.
@@ -154,11 +175,12 @@ Haiku 5.5 с этим справляется. На прогоне MyPassBox вы
 Effort `high` в этом прогоне не помог: субагент потратил больше токенов и пропустил светлый навбар.
 
 Если нужна другая цена или точность, поменяй модель и effort в файле настроек.
-`adbm config --init` пишет его со значениями по умолчанию:
+`adbm config --set` пишет одно значение, `adbm config --init` — файл со всеми ключами и комментариями:
 
 ```bash
 adbm config --init            # ~/.config/adbm/config.ini ($XDG_CONFIG_HOME, если задан), для всех проектов
-adbm config --init --project  # .adbm/config.ini, только для этого проекта
+adbm config --init --project  # .adbm/config.ini, только для этого проекта; ключи закомментированы и ничего не перекрывают
+adbm config --set adbm-eyes.model=sonnet  # одно значение в ~/.config/adbm/config.ini
 adbm config                   # итоговые значения и откуда они взяты
 ```
 

@@ -331,6 +331,58 @@ class ToolsTest(unittest.TestCase):
             if os.path.exists(proj):
                 os.remove(proj)
 
+    def test_config_set_and_devices(self):
+        xdg = os.path.join(TMP, "xdg2")
+        proj = os.path.join(os.environ["ADBM_PROJECT"], ".adbm", "config.ini")
+        old = os.environ.get("XDG_CONFIG_HOME")
+        os.environ["XDG_CONFIG_HOME"] = xdg
+        try:
+            adbm.config_set(proj, "devices", "apis", "33, 35")
+            text = open(proj).read()
+            self.assertIn("\napis = 33, 35\n", text)
+            self.assertIn("# model = haiku", text)  # a project file copies no values from the template
+            user = os.path.join(xdg, "adbm", "config.ini")
+            adbm.config_set(user, "devices", "apis", "28")
+            adbm.config_set(user, "adbm-eyes", "model", "sonnet")
+            cfg, problems = adbm.load_config()
+            self.assertEqual(problems, [])
+            self.assertEqual(cfg["devices"]["apis"], ("33, 35", "project"))
+            self.assertEqual(cfg["adbm-eyes"]["model"], ("sonnet", "user"))
+            adbm.config_loaded.cache_clear()
+            self.assertEqual(adbm.config_apis(), [33, 35])
+            adbm.config_set(proj, "devices", "apis", "")  # empty in the project: the user file decides
+            self.assertEqual(adbm.load_config()[0]["devices"]["apis"], ("28", "user"))
+            self.assertEqual(open(user).read().count("model ="), 1)
+            self.assertEqual(adbm.check_value("devices", "apis", "28,3x")[0], None)
+            self.assertEqual(adbm.check_value("devices", "apis", "35, 35,9"), ("35, 9", None))
+            self.assertEqual(adbm.check_value("devices", "profile", "Nexus 5"), ("Nexus 5", None))
+        finally:
+            if old is None:
+                os.environ.pop("XDG_CONFIG_HOME", None)
+            else:
+                os.environ["XDG_CONFIG_HOME"] = old
+            if os.path.exists(proj):
+                os.remove(proj)
+            adbm.config_loaded.cache_clear()
+
+    def test_pick_uses_config_apis(self):
+        devs = [{"serial": "emulator-5554", "api": 28, "emulator": True, "name": "a"},
+                {"serial": "emulator-5556", "api": 35, "emulator": True, "name": "b"}]
+        real = adbm.list_devices, adbm.config_apis
+        adbm.list_devices = lambda: devs
+
+        class A:
+            api = serial = None
+        try:
+            adbm.config_apis = lambda: [28, 35]
+            self.assertEqual(adbm.pick(A(), multi=True), [(28, "emulator-5554"), (35, "emulator-5556")])
+            adbm.config_apis = lambda: [33, 28]  # one device: the highest running level of the list
+            self.assertEqual(adbm.pick(A()), [(28, "emulator-5554")])
+            adbm.config_apis = lambda: []
+            self.assertEqual(adbm.pick(A()), [(35, "emulator-5556")])
+        finally:
+            adbm.list_devices, adbm.config_apis = real
+
     def test_guard_command_quotes_the_path(self):
         cmd = adbm.guard_command()
         self.assertRegex(cmd, r'^f=("\$HOME/[^"]+"|\S+); \[ -f "\$f" \]')

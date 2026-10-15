@@ -81,9 +81,9 @@ adbm board --open
 | Command | What it does |
 |---|---|
 | `adbm doctor` | checks SDK, adb, emulator, Java, Maestro, Pillow, AVDs and their `config.ini`, the guard hook, the `adbm-eyes` agent and the subagent models |
-| `adbm config` | model and effort of subagents from `~/.config/adbm/config.ini` and `.adbm/config.ini`; `--init` writes a file with the defaults |
+| `adbm config` | settings from `~/.config/adbm/config.ini` and `.adbm/config.ini`: subagent model and effort, API levels; `--set devices.apis=28,33,35 --project` writes a value |
 | `adbm setup --api 28,33,35` | system images, AVDs with 4 GB RAM, Maestro, Android CLI; `--hook`, `--agent` for Claude Code; without `--yes` it only prints the plan |
-| `adbm devices --start 28,33,35` | boots emulators, prints API → serial → screen |
+| `adbm devices --start [28,33,35]` | boots emulators (without a value — from `[devices] apis`), prints API → serial → screen |
 | `adbm prep` | animations off, status bar demo mode, theme, navigation mode, font scale |
 | `adbm new <slug>`, `adbm status` | start a run folder, show the current run and counters |
 | `adbm install <apk> [--as before\|after]` | installs an APK on all API levels in parallel (`after` by default) |
@@ -140,6 +140,27 @@ next to its target). It changes Claude Code for every project, so it runs only w
 session spent on `adbm`: characters of output per command and images read.
 `adbm status` prints the same estimate for the current run from `stats.json`.
 
+## API levels
+
+The list of API levels to check lives in the project file `.adbm/config.ini`. Commands without `--api` use it and need all its emulators running: boot them with `adbm devices --start`.
+A list for all projects can go to `~/.config/adbm/config.ini`: an empty `apis` in the project does not override it.
+
+```ini
+[devices]
+apis = 28, 33, 35               # empty — the one running emulator, or API 35
+image = google_apis             # image variant for new AVDs; not set — any image already on disk
+profile = pixel_8               # profile of new AVDs, see avdmanager list device
+```
+
+On the first check in a project `apis` is empty. The agent reads the app's `minSdk`, offers levels
+with reasons and waits for the answer. Then it writes the answer: `adbm config --set devices.apis=28,33,35 --project`.
+
+No link to images is needed. `adbm setup` builds a plan: `sdkmanager` downloads the missing images from
+Google's repository into `$ANDROID_HOME/system-images/`, and `avdmanager` creates AVDs. `setup` skips a level
+that already has an AVD and reuses an image already on disk. If `image` or `profile` differs from an existing AVD,
+`setup` says so and leaves the AVD alone: delete it to recreate it. `adbm devices --start` without a value
+boots the emulators from the list. To add a level, append the number to `apis` and run `adbm setup`.
+
 ## Subagent model
 
 The `adbm-eyes` subagent runs on `haiku` with effort `low` by default.
@@ -154,11 +175,12 @@ Haiku 5.5 handles this. On the MyPassBox run above it gave the same verdict as `
 Effort `high` did not help on this run: the subagent spent more tokens and missed the light navigation bar.
 
 If you need another price or accuracy, change the model and effort in a settings file.
-`adbm config --init` writes it with the defaults:
+`adbm config --set` writes one value, `adbm config --init` writes a file with all keys and comments:
 
 ```bash
 adbm config --init            # ~/.config/adbm/config.ini ($XDG_CONFIG_HOME if set), for all projects
-adbm config --init --project  # .adbm/config.ini, for this project only
+adbm config --init --project  # .adbm/config.ini, for this project only; keys are commented out and override nothing
+adbm config --set adbm-eyes.model=sonnet  # one value in ~/.config/adbm/config.ini
 adbm config                   # the effective values and where they come from
 ```
 

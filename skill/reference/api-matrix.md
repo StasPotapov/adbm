@@ -1,8 +1,9 @@
 # Which API levels to offer
 
-By default a check runs on one API level — 35. The agent offers other levels with a reason,
-the person decides. Never offer levels below the app's `minSdk`. Every extra level adds frames
-and time, but a parallel run on three emulators takes almost as long as on one.
+The project's set lives in `[devices] apis` of `.adbm/config.ini` (`adbm config`). When it is empty,
+a command without `--api` takes the one running emulator or API 35. The agent offers levels with a reason,
+the person decides, and the agent writes the answer with `adbm config --set devices.apis=… --project`.
+Never offer levels below the app's `minSdk`. Every extra level adds frames and time, but a parallel run on three emulators takes almost as long as on one.
 
 | What the change touches | API levels | Why |
 |---|---|---|

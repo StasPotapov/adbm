@@ -120,7 +120,8 @@ def parse_apis(s):
         if part:
             if not part.isdigit():
                 die(f"API must be a number: {part}")
-            out.append(int(part))
+            if int(part) not in out:
+                out.append(int(part))
     return out
 
 
@@ -390,16 +391,22 @@ def pick(args, multi=False):
         die("no devices connected — `adbm devices --start <API>`" +
             "".join(f"\n{s}: {st} — {state_hint(st)}" for s, st in bad.items()))
     apis = parse_apis(getattr(args, "api", None))
+    if not apis and multi:
+        apis = config_apis()
     if not apis:
         emus = [d for d in devs if d["emulator"]]
         if len(emus) == 1:
             return [(emus[0]["api"], emus[0]["serial"])]
         if not emus and len(devs) == 1:
             return [(devs[0]["api"], devs[0]["serial"])]
-        if any(d["api"] == 35 and d["emulator"] for d in devs):
-            apis = [35]
+        running = [a_ for a_ in sorted(config_apis(), reverse=True) + [35]
+                   if any(d["api"] == a_ and d["emulator"] for d in devs)]
+        if running:
+            apis = running[:1]
         else:
-            die("pass --api: running " + ", ".join(f"{d['api']}" for d in devs))
+            die("pass --api: running " + ", ".join(f"{d['api']}" for d in devs)
+                + ("" if config_apis() else "\nthe project's API levels are not set: ask the person, then"
+                   " adbm config --set devices.apis=28,33,35 --project"))
     res = []
     for a in apis:
         cand = [d for d in devs if d["api"] == a]
@@ -679,9 +686,10 @@ def install_agent():
     os.symlink(agent_target(), link)
 
 
-# ---------------------------------------------------------------- settings: subagent models
+# ---------------------------------------------------------------- settings: subagent models and devices
 
-AGENT_DEFAULTS = {"adbm-eyes": {"model": "haiku", "effort": "low"}}
+CONFIG_DEFAULTS = {"adbm-eyes": {"model": "haiku", "effort": "low"},
+                   "devices": {"apis": "", "image": "google_apis", "profile": "pixel_8"}}
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 MODEL_ALIASES = ("sonnet", "opus", "haiku", "fable")
 CONFIG_TEMPLATE = """\
@@ -695,7 +703,17 @@ CONFIG_TEMPLATE = """\
 model = {model}
 # Reasoning effort: low, medium, high, xhigh, max. Empty: the usual effort.
 effort = {effort}
-""".format(**AGENT_DEFAULTS["adbm-eyes"])
+
+[devices]
+# API levels a command uses without --api, e.g. 28, 33, 35. Empty: the one running emulator, or API 35.
+# `adbm setup --yes` downloads the missing system images and creates AVDs; `adbm devices --start` boots them.
+apis =
+# System image variant for new AVDs: google_apis (allows adb root) or google_apis_playstore.
+# Not set: a system image already on disk of any variant, else google_apis.
+# image = {image}
+# AVD device profile for new AVDs, see `avdmanager list device`.
+# profile = {profile}
+""".format(**CONFIG_DEFAULTS["adbm-eyes"], **{k: v for k, v in CONFIG_DEFAULTS["devices"].items() if k != "apis"})
 
 
 def config_paths():
@@ -703,14 +721,69 @@ def config_paths():
     return [("user", user), ("project", os.path.join(project_root(), ".adbm", "config.ini"))]
 
 
+def check_value(sec, k, v):
+    """(normalized value, None) or (None, what is wrong)."""
+    v = v.strip() if k == "profile" else v.strip().lower()
+    if k == "effort" and v and v not in EFFORTS:
+        return None, f"effort={v}, allowed: {', '.join(EFFORTS)} or empty"
+    if k == "model" and v and v not in MODEL_ALIASES:
+        return None, f"model={v}, allowed: {', '.join(MODEL_ALIASES)} or empty"
+    if k == "apis":
+        parts = [x.strip() for x in v.split(",") if x.strip()]
+        if not all(x.isdigit() for x in parts):
+            return None, f"apis={v}, want API levels like 28, 33, 35"
+        v = ", ".join(dict.fromkeys(str(int(x)) for x in parts))
+    if k in ("image", "profile") and not re.fullmatch(r"[\w.\- ]+", v):
+        return None, f"{k}={v or '(empty)'}, want a name like " + ("google_apis" if k == "image" else "pixel_8")
+    return v, None
+
+
+def config_text(path):
+    """The template; for the project file with keys commented out, as it overrides the user file."""
+    if path != dict(config_paths())["project"]:
+        return CONFIG_TEMPLATE
+    return re.sub(r"(?m)^(\w+ =)", r"# \1", CONFIG_TEMPLATE)
+
+
+def config_set(path, sec, key, value):
+    """Set one key in an INI file, keeping comments and other keys."""
+    text = open(path, encoding="utf-8").read() if os.path.exists(path) else config_text(path)
+    lines = text.splitlines()
+    cur, end, plain, commented = None, None, None, None
+    for i, ln in enumerate(lines):
+        m = re.match(r"\s*\[([^\]]+)\]", ln)
+        if m:
+            if cur == sec and end is None:
+                end = i
+            cur = m.group(1).strip()
+        elif cur == sec and plain is None and re.match(rf"\s*{key}\s*=", ln):
+            plain = i
+        elif cur == sec and commented is None and re.match(rf"\s*#\s*{key}\s*=", ln):
+            commented = i
+    if cur == sec and end is None:
+        end = len(lines)
+    new = f"{key} = {value}"
+    if plain is not None or commented is not None:
+        lines[plain if plain is not None else commented] = new
+    elif end is not None:
+        while end > 0 and not lines[end - 1].strip():
+            end -= 1
+        lines.insert(end, new)
+    else:
+        lines += ["", f"[{sec}]", new]
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+
+
 def load_config():
-    """Agent settings: {agent: {key: (value, source)}} with the project over the user file, and problems."""
-    cfg = {ag: {k: (v, "default") for k, v in d.items()} for ag, d in AGENT_DEFAULTS.items()}
+    """Settings: {section: {key: (value, source)}} with the project over the user file, and problems."""
+    cfg = {sec: {k: (v, "default") for k, v in d.items()} for sec, d in CONFIG_DEFAULTS.items()}
     problems = []
     for src, path in config_paths():
         if not os.path.exists(path):
             continue
-        # no DEFAULT section: its keys would leak into every agent
+        # no DEFAULT section: its keys would leak into every section
         cp = configparser.ConfigParser(interpolation=None, inline_comment_prefixes=("#", ";"), default_section="\0")
         try:
             if not cp.read(path, encoding="utf-8"):
@@ -724,16 +797,39 @@ def load_config():
                 problems.append(f"{rel(path)}: unknown section [{sec}], known: {', '.join(cfg)}")
                 continue
             for k, v in cp.items(sec):
-                v = v.strip().lower()
                 if k not in cfg[sec]:
                     problems.append(f"{rel(path)}: [{sec}] unknown key {k}, known: {', '.join(cfg[sec])}")
-                elif k == "effort" and v and v not in EFFORTS:
-                    problems.append(f"{rel(path)}: [{sec}] effort={v}, allowed: {', '.join(EFFORTS)} or empty")
-                elif k == "model" and v and v not in MODEL_ALIASES:
-                    problems.append(f"{rel(path)}: [{sec}] model={v}, allowed: {', '.join(MODEL_ALIASES)} or empty")
+                    continue
+                v, err = check_value(sec, k, v)
+                if k == "apis" and v == "":
+                    continue  # empty: not set here, a lower layer decides
+                if err:
+                    problems.append(f"{rel(path)}: [{sec}] {err}")
                 else:
                     cfg[sec][k] = (v, src)
     return cfg, problems
+
+
+WARNED = set()
+
+
+@functools.lru_cache(maxsize=None)
+def config_loaded():
+    return load_config()
+
+
+def config_get(sec, key):
+    """One setting; problems of that section go to stderr once, the bad value falls back."""
+    cfg, problems = config_loaded()
+    for p in problems:
+        if (f"[{sec}]" in p or "[" not in p) and p not in WARNED:
+            WARNED.add(p)
+            print(f"! config: {p}", file=sys.stderr)
+    return cfg[sec][key][0]
+
+
+def config_apis():
+    return parse_apis(config_get("devices", "apis")) or []
 
 
 def agent_line(name, d):
@@ -741,16 +837,27 @@ def agent_line(name, d):
 
 
 def cmd_config(a):
-    if a.project and not a.init:
-        die("--project works only with --init")
+    if a.project and not (a.init or a.set):
+        die("--project works only with --init or --set")
+    path = dict(config_paths())["project" if a.project else "user"]
     if a.init:
-        path = dict(config_paths())["project" if a.project else "user"]
         if os.path.exists(path):
-            die(f"{rel(path)} already exists — edit it")
+            die(f"{rel(path)} already exists — edit it or use --set")
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w") as f:
-            f.write(CONFIG_TEMPLATE)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(config_text(path))
         print(f"written {rel(path)}")
+    for item in a.set or []:
+        m = re.fullmatch(r"([\w-]+)\.(\w+)=(.*)", item)
+        if not m or m.group(1) not in CONFIG_DEFAULTS or m.group(2) not in CONFIG_DEFAULTS[m.group(1)]:
+            die(f"--set {item}: want section.key=value, keys: "
+                + ", ".join(f"{s}.{k}" for s, d in CONFIG_DEFAULTS.items() for k in d))
+        sec, key, value = m.groups()
+        value, err = check_value(sec, key, value)
+        if err:
+            die(f"--set {item}: {err}")
+        config_set(path, sec, key, value)
+        print(f"{rel(path)}: [{sec}] {key} = {value or '(empty)'}")
     cfg, problems = load_config()
     for name, d in cfg.items():
         print(agent_line(name, d))
@@ -825,9 +932,18 @@ def cmd_doctor(a):
     for ok, name, detail, fix in claude_rows():
         row(ok, name, detail, fix)
     cfg, problems = load_config()
-    row(None if problems else True, "subagent models", "; ".join(problems) or
-        ", ".join(f"{n} {d['model'][0] or '-'}/{d['effort'][0] or '-'}" for n, d in cfg.items()),
-        "adbm config" if problems else "")
+    row(None if problems else True, "config", "; ".join(problems) or
+        f"adbm-eyes {cfg['adbm-eyes']['model'][0] or '-'}/{cfg['adbm-eyes']['effort'][0] or '-'}, "
+        f"API {cfg['devices']['apis'][0] or '-'}", "adbm config" if problems else "")
+    want = parse_apis(cfg["devices"]["apis"][0]) or []
+    if not want:
+        row(None, "config API levels", "not set: commands without --api take the one running emulator or API 35",
+            "ask the person, then adbm config --set devices.apis=28,33,35 --project")
+    else:
+        have_avd = {i["api"] for i in avd_index().values()}
+        miss = [f"API {n_}: no AVD" for n_ in want if n_ not in have_avd]
+        row(False if miss else True, "config API levels", "; ".join(miss) or ", ".join(map(str, want)) + " — AVDs exist",
+            "adbm setup --yes")
     # system images and AVDs
     if root:
         imgs = sorted(glob.glob(os.path.join(root, "system-images", "android-*", "*", "*")))
@@ -902,21 +1018,45 @@ def cmd_setup(a):
     avdm = sdk_tool("cmdline-tools/latest/bin", "avdmanager")
     avds = avd_index()
     running = {d["name"] for d in list_devices() if d["emulator"]} if sdk_tool("platform-tools", "adb") else set()
-    for api in parse_apis(a.api) or []:
-        have_img = root and glob.glob(os.path.join(root, "system-images", f"android-{api}", "*", abi()))
-        pkg = f"system-images;android-{api};google_apis;{abi()}"
+    apis = parse_apis(a.api)
+    if apis is None and not (a.tune or a.maestro or a.hook or a.agent or a.android_cli):
+        apis = config_apis()
+        if not apis:
+            die("pass --api 28,33,35, or ask the person and run adbm config --set devices.apis=28,33,35 --project")
+    image, profile = config_get("devices", "image"), config_get("devices", "profile")
+    dev_cfg = config_loaded()[0]["devices"]
+    any_variant = dev_cfg["image"][1] == "default"
+    for api in apis or []:
+        have_avd = [(n, i) for n, i in avds.items() if i["api"] == api]
+        if have_avd:
+            name, info = have_avd[0]
+            sysdir = info["config"].get("image.sysdir.1", "").strip("/")
+            if root and sysdir and not os.path.isdir(os.path.join(root, sysdir)):
+                if not sdkm:
+                    die("no sdkmanager — install Command-line Tools (see `adbm doctor`)")
+                steps.append((f"system image of {name} (missing on disk)", [sdkm, ";".join(sysdir.split("/")[:4])]))
+            variant = (sysdir.split("/") + ["", "", ""])[2]
+            prof = info["config"].get("hw.device.name", "")
+            if not any_variant and variant and variant != image:
+                print(f"API {api}: {name} uses {variant}, the config wants {image} — delete the AVD to recreate it")
+            if dev_cfg["profile"][1] != "default" and prof and prof != profile:
+                print(f"API {api}: {name} uses profile {prof}, the config wants {profile} — delete the AVD to recreate it")
+            continue
+        # an image already on disk: the configured variant, or any variant when none is configured
+        have_img = root and (glob.glob(os.path.join(root, "system-images", f"android-{api}", image, abi()))
+                             or any_variant and glob.glob(os.path.join(root, "system-images", f"android-{api}", "*", abi())))
+        pkg = f"system-images;android-{api};{image};{abi()}"
         if not have_img:
             if not sdkm:
                 die("no sdkmanager — install Command-line Tools (see `adbm doctor`)")
             steps.append((f"system image API {api}", [sdkm, pkg]))
         else:
             pkg = "system-images;" + ";".join(os.path.relpath(have_img[0], os.path.join(root, "system-images")).split(os.sep))
-        if not any(i["api"] == api for i in avds.values()):
-            name = f"adbm_API_{api}"
-            if not avdm:
-                die("no avdmanager — install Command-line Tools (see `adbm doctor`)")
-            steps.append((f"AVD {name}", ["sh", "-c", f"echo no | {shlex.quote(avdm)} create avd -n {name} -k {shlex.quote(pkg)} -d pixel_8"]))
-            steps.append((f"tune {name}", lambda n=name: tune_config(avd_index()[n]["path"])))
+        name = f"adbm_API_{api}"
+        if not avdm:
+            die("no avdmanager — install Command-line Tools (see `adbm doctor`)")
+        steps.append((f"AVD {name}", ["sh", "-c", f"echo no | {shlex.quote(avdm)} create avd -n {name} -k {shlex.quote(pkg)} -d {shlex.quote(profile)}"]))
+        steps.append((f"tune {name}", lambda n=name: tune_config(avd_index()[n]["path"])))
     if a.tune:
         for name, info in avds.items():
             if a.api and info["api"] not in parse_apis(a.api):
@@ -1006,8 +1146,10 @@ def cmd_devices(a):
         for api in sorted(set(want) - {d["api"] for d in devs}):
             print(f"API {api}: no running emulator")
         return 0 if devs else 1
-    if a.start:
-        want = parse_apis(a.start)
+    if a.start is not None:
+        want = parse_apis(a.start) or config_apis()
+        if not want:
+            die("pass --start 28,33,35, or ask the person and run adbm config --set devices.apis=28,33,35 --project")
         devs = list_devices()
         avds = avd_index()
         todo = []
@@ -3024,9 +3166,10 @@ def main():
         return p
 
     add("doctor", cmd_doctor, "check the environment")
-    p = add("config", cmd_config, "subagent models and effort from ~/.config/adbm/config.ini and .adbm/config.ini")
+    p = add("config", cmd_config, "settings from ~/.config/adbm/config.ini and .adbm/config.ini: subagent model and effort, API levels")
     p.add_argument("--init", action="store_true", help="write a config file with the defaults")
-    p.add_argument("--project", action="store_true", help="with --init: the project's .adbm/config.ini")
+    p.add_argument("--set", action="append", metavar="SECTION.KEY=VALUE", help="write a value, e.g. devices.apis=28,33,35")
+    p.add_argument("--project", action="store_true", help="with --init or --set: the project's .adbm/config.ini")
     p = add("setup", cmd_setup, "install system images, AVDs, Maestro, Android CLI (without --yes: plan only)")
     p.add_argument("--api")
     p.add_argument("--tune", action="store_true", help="fix config.ini of existing AVDs")
@@ -3036,7 +3179,7 @@ def main():
     p.add_argument("--agent", action="store_true", help="link the adbm-eyes agent into ~/.claude/agents/")
     p.add_argument("--yes", action="store_true", help="run the plan")
     p = add("devices", cmd_devices, "list devices; --start boots AVDs for the given API levels, --stop shuts them down")
-    p.add_argument("--start", metavar="APIS")
+    p.add_argument("--start", metavar="APIS", nargs="?", const="", help="without a value: apis from the config")
     p.add_argument("--stop", metavar="APIS")
     p.add_argument("--headless", action="store_true")
     p = add("prep", cmd_prep, "deterministic frames: animations off, demo mode, theme, navigation", "multi")
