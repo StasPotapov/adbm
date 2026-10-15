@@ -63,6 +63,22 @@ Requires the Android SDK and Python 3.9+ with Pillow. Scenarios and non-ASCII `a
 
 Platforms: macOS is tested. Linux should work: it needs `/dev/kvm` for the emulator. Windows is not supported; WSL is not tested.
 
+There are two ways to install. Pick one: with both, the skill and the hook load twice.
+
+**As a Claude Code plugin.** One step installs the skill, the `adbm-eyes` agent and the guard hook.
+The skill is then called `adbm:adbm`, the agent `adbm:adbm-eyes`.
+
+```
+/plugin marketplace add StasPotapov/adbm
+/plugin install adbm@adbm
+```
+
+Then install Pillow (see below) and run `adbm doctor` through the agent: ask it to check the environment.
+The plugin does not put `adbm` on the terminal's PATH; for terminal use, clone the repository as below.
+To get a new version: `/plugin marketplace update adbm`, then `/plugin update adbm@adbm`.
+
+**From a clone.** The skill is a symlink, the hook and the agent are added by `adbm setup`:
+
 ```bash
 git clone https://github.com/StasPotapov/adbm.git ~/dev/adbm
 mkdir -p ~/.claude/skills

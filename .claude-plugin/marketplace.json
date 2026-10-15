@@ -1,0 +1,12 @@
+{
+  "name": "adbm",
+  "description": "ADBM: Android device control and visual before/after checks for Claude Code",
+  "owner": { "name": "Stas Potapov" },
+  "plugins": [
+    {
+      "name": "adbm",
+      "source": "./",
+      "description": "Skill, adbm CLI, adbm-eyes subagent and the guard hook"
+    }
+  ]
+}

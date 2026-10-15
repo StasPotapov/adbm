@@ -63,6 +63,22 @@ ADBM не заменяет эти инструменты, а связывает 
 
 Платформы: macOS проверена. Linux должен работать: эмулятору нужен `/dev/kvm`. Windows не поддерживается, WSL не проверялся.
 
+Есть два способа установки. Выбери один: с обоими skill и хук загрузятся дважды.
+
+**Плагином Claude Code.** Одна команда ставит skill, агента `adbm-eyes` и хук-ограждение.
+Skill тогда называется `adbm:adbm`, агент — `adbm:adbm-eyes`.
+
+```
+/plugin marketplace add StasPotapov/adbm
+/plugin install adbm@adbm
+```
+
+Затем поставь Pillow (см. ниже) и попроси агента проверить окружение: он запустит `adbm doctor`.
+Плагин не добавляет `adbm` в PATH терминала. Чтобы работать из терминала, клонируй репозиторий, как ниже.
+Новая версия: `/plugin marketplace update adbm`, затем `/plugin update adbm@adbm`.
+
+**Из клона.** Skill — симлинк, хук и агента добавляет `adbm setup`:
+
 ```bash
 git clone https://github.com/StasPotapov/adbm.git ~/dev/adbm
 mkdir -p ~/.claude/skills
