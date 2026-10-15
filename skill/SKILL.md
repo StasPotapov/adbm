@@ -56,7 +56,8 @@ A 1080×2400 image costs ~3350 tokens, a line of `adbm ui` ~15.
 
 ## Visual check
 
-1. **Environment.** `doctor`; `missing` rows that block the task — show the fix and ask; `setup` without `--yes` only plans.
+1. **Environment.** `doctor`; rows that block the task — show the fix and ask; `setup` without `--yes` only plans.
+   `setup --hook` / `--agent` change the person's Claude Code settings: run them with `--yes` only after a clear yes.
 2. **API levels.** Find `minSdk`/`targetSdk` in `build.gradle*`. Default — API 35 only. For insets, navbar,
    theme, permissions, back navigation offer a set with reasons from `reference/api-matrix.md` and wait.
 3. **Run and builds.** `new <slug>`. Comparing builds: `install <before.apk> --as before --api …`, "before" frames,

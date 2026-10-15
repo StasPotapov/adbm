@@ -582,6 +582,120 @@ def find_nodes(nodes, sel):
 
 # ---------------------------------------------------------------- commands: environment
 
+# ---------------------------------------------------------------- Claude Code integration
+
+def claude_dir():
+    return os.path.expanduser(os.environ.get("CLAUDE_CONFIG_DIR") or "~/.claude")
+
+
+def load_settings(name="settings.json", strict=False):
+    """A Claude Code settings file as a dict; {} if missing; strict — die on invalid JSON instead of {}."""
+    p = os.path.join(claude_dir(), name)
+    if not os.path.exists(p):
+        return {}
+    try:
+        with open(p) as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except ValueError as e:
+        if strict:
+            die(f"{p} is not valid JSON ({e}) — add the hook by hand, see the README")
+        return {}
+
+
+def adbm_plugin_installed():
+    """The adbm plugin is installed and not switched off in enabledPlugins."""
+    try:
+        with open(os.path.join(claude_dir(), "plugins", "installed_plugins.json")) as f:
+            keys = [k for k in (json.load(f).get("plugins") or {}) if k.split("@")[0] == "adbm"]
+    except Exception:
+        return False
+    enabled = {**(load_settings().get("enabledPlugins") or {}), **(load_settings("settings.local.json").get("enabledPlugins") or {})}
+    return any(enabled.get(k, True) is not False for k in keys)
+
+
+def guard_command():
+    """The hook command: through ~/.claude/skills/adbm when that link leads here, else the absolute path."""
+    link = os.path.join(claude_dir(), "skills", "adbm")
+    base = SKILL_DIR
+    if os.path.realpath(link) == SKILL_DIR:
+        base = link
+    script = os.path.join(base, "hooks", "adbm-guard.py")
+    home = os.path.relpath(script, os.path.expanduser("~"))
+    path = f'"$HOME/{home}"' if not home.startswith("..") and '"' not in home and "$" not in home else shlex.quote(script)
+    return f'f={path}; [ -f "$f" ] || exit 0; exec python3 "$f"'
+
+
+def guard_installed(settings):
+    hooks = settings.get("hooks") if isinstance(settings.get("hooks"), dict) else {}
+    pre = hooks.get("PreToolUse") if isinstance(hooks.get("PreToolUse"), list) else []
+    return any("adbm-guard" in str(h.get("command", "")) for e in pre if isinstance(e, dict)
+               for h in (e.get("hooks") or []) if isinstance(h, dict))
+
+
+def guard_anywhere():
+    return guard_installed(load_settings()) or guard_installed(load_settings("settings.local.json"))
+
+
+def agent_link():
+    return os.path.join(claude_dir(), "agents", "adbm-eyes.md")
+
+
+def agent_target():
+    return os.path.join(SKILL_DIR, "agents", "adbm-eyes.md")
+
+
+def install_guard():
+    """Append the guard to hooks.PreToolUse of settings.json; everything else stays as it was."""
+    p = os.path.join(claude_dir(), "settings.json")
+    real = os.path.realpath(p)  # settings.json may be a symlink (dotfiles): write through it
+    settings = load_settings(strict=True)
+    if guard_installed(settings):
+        return
+    if not isinstance(settings.get("hooks"), dict):
+        settings["hooks"] = {}
+    if not isinstance(settings["hooks"].get("PreToolUse"), list):
+        settings["hooks"]["PreToolUse"] = []
+    settings["hooks"]["PreToolUse"].append(
+        {"matcher": "Read", "hooks": [{"type": "command", "command": guard_command()}]})
+    os.makedirs(os.path.dirname(real), exist_ok=True)
+    tmp = real + ".adbm-tmp"
+    with open(tmp, "w") as f:
+        f.write(json.dumps(settings, ensure_ascii=False, indent=2) + "\n")
+    if os.path.exists(real):
+        shutil.copy2(real, real + ".adbm-backup")
+        shutil.copymode(real, tmp)
+    os.replace(tmp, real)
+
+
+def install_agent():
+    link = agent_link()
+    os.makedirs(os.path.dirname(link), exist_ok=True)
+    if os.path.lexists(link):
+        if not os.path.islink(link):
+            shutil.copy2(link, link + ".adbm-backup")
+        os.remove(link)
+    os.symlink(agent_target(), link)
+
+
+def claude_rows():
+    """doctor rows for the Claude Code side: the guard hook and the adbm-eyes agent."""
+    if not os.path.isdir(claude_dir()):
+        return [(None, "Claude Code", f"no {rel(claude_dir())} — guard hook and adbm-eyes not checked",
+                 "adbm setup --hook --agent --yes")]
+    if adbm_plugin_installed():
+        return [(True, "guard hook, adbm-eyes", "from the adbm plugin", "")]
+    ok = guard_anywhere()
+    rows = [(ok, "guard hook", "denies Read of full frames" if ok else "Read of a full frame is not denied",
+             "ask the person, then adbm setup --hook --yes")]
+    link = agent_link()
+    ok = os.path.realpath(link) == agent_target()
+    rows.append((True if ok else None, "adbm-eyes agent", rel(link) if ok else
+                 ("another file at " + rel(link) if os.path.lexists(link) else "falls back to general-purpose"),
+                 "ask the person, then adbm setup --agent --yes"))
+    return rows
+
+
 def cmd_doctor(a):
     rows = []
 
@@ -626,6 +740,8 @@ def cmd_doctor(a):
     acli = shutil.which("android")
     row(True if acli else None, "Android CLI (optional)", acli or "needed only for annotate",
         "adbm setup --android-cli --yes")
+    for ok, name, detail, fix in claude_rows():
+        row(ok, name, detail, fix)
     # system images and AVDs
     if root:
         imgs = sorted(glob.glob(os.path.join(root, "system-images", "android-*", "*", "*")))
@@ -726,6 +842,22 @@ def cmd_setup(a):
                           lambda p=info["path"]: tune_config(p)))
     if a.maestro and not shutil.which("maestro"):
         steps.append(("Maestro", ["brew", "install", "mobile-dev-inc/tap/maestro"]))
+    if a.hook:
+        load_settings(strict=True)  # invalid JSON stops the plan before anything is installed
+        have = guard_anywhere()
+        if adbm_plugin_installed():
+            print("guard hook: comes with the adbm plugin, nothing to add")
+        elif not have:
+            steps.append((f"guard hook: append to hooks.PreToolUse in {rel(os.path.join(claude_dir(), 'settings.json'))}"
+                          " — every Read of a full adbm frame or raw UI dump will be denied, in every project"
+                          " (a copy of the old file goes to settings.json.adbm-backup)", install_guard))
+    if a.agent:
+        if adbm_plugin_installed():
+            print("adbm-eyes agent: comes with the adbm plugin, nothing to add")
+        elif os.path.realpath(agent_link()) != agent_target():
+            steps.append((f"adbm-eyes agent: link {rel(agent_link())} → {agent_target()}"
+                          + (" (the file there goes to adbm-eyes.md.adbm-backup)" if os.path.lexists(agent_link())
+                             and not os.path.islink(agent_link()) else ""), install_agent))
     if a.android_cli and not shutil.which("android"):
         steps.append(("Android CLI (adbm calls it with --no-metrics; do not run `android init`)",
                       ["brew", "install", "--cask", "android-cli"]))
@@ -736,6 +868,8 @@ def cmd_setup(a):
         print(("• " if a.yes else "plan: ") + d + ("" if callable(c) else "  $ " + " ".join(shlex.quote(x) for x in c)))
     if not a.yes:
         print("\nthis is a plan. To run it: the same command with --yes")
+        if a.hook or a.agent:
+            print("--hook and --agent change the person's Claude Code settings: show them this plan and run --yes only after they agree")
         return 0
     for d, c in steps:
         if callable(c):
@@ -2809,6 +2943,8 @@ def main():
     p.add_argument("--tune", action="store_true", help="fix config.ini of existing AVDs")
     p.add_argument("--maestro", action="store_true")
     p.add_argument("--android-cli", action="store_true")
+    p.add_argument("--hook", action="store_true", help="add the guard hook to ~/.claude/settings.json")
+    p.add_argument("--agent", action="store_true", help="link the adbm-eyes agent into ~/.claude/agents/")
     p.add_argument("--yes", action="store_true", help="run the plan")
     p = add("devices", cmd_devices, "list devices; --start boots AVDs for the given API levels, --stop shuts them down")
     p.add_argument("--start", metavar="APIS")

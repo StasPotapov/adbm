@@ -10,6 +10,8 @@
 | Maestro | `adbm run`, `adbm type` with non-ASCII text | `adbm setup --maestro --yes` (Homebrew `mobile-dev-inc/tap/maestro`) |
 | ffmpeg | contact sheet in `adbm record` | `brew install ffmpeg` |
 | Android CLI, optional | only `adbm annotate` | `adbm setup --android-cli --yes` (cask `android-cli`) |
+| Guard hook (Claude Code) | denies `Read` of full-size frames | `adbm setup --hook --yes`: appends to `~/.claude/settings.json`; a plugin install has it |
+| `adbm-eyes` agent (Claude Code) | the subagent with 5 tools, a small start context | `adbm setup --agent --yes`: a link in `~/.claude/agents/`; a plugin install has it |
 
 `adbm doctor` checks all of this and prints a fix command for every row.
 `doctor` itself installs nothing.

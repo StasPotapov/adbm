@@ -18,8 +18,8 @@ Claude Code skill и CLI `adbm` для визуальной проверки And
 
 | Команда | Что делает |
 |---|---|
-| `adbm doctor` | проверяет SDK, adb, emulator, Java, Maestro, Pillow, AVD и их `config.ini` |
-| `adbm setup --api 28,33,35` | образы, AVD с 4 ГБ памяти, Maestro, Android CLI; без `--yes` — только план |
+| `adbm doctor` | проверяет SDK, adb, emulator, Java, Maestro, Pillow, AVD и их `config.ini`, хук-ограждение и агента `adbm-eyes` |
+| `adbm setup --api 28,33,35` | образы, AVD с 4 ГБ памяти, Maestro, Android CLI; `--hook`, `--agent` для Claude Code; без `--yes` — только план |
 | `adbm devices --start 28,33,35` | поднимает эмуляторы, печатает API → serial → экран |
 | `adbm prep` | анимации 0, demo mode статус-бара, тема, навигация, шрифт |
 | `adbm new <slug>`, `adbm status` | начать папку прогона, показать текущий прогон и счётчики |
@@ -51,8 +51,8 @@ index.html  manifest.js  00-summary.png
 ```bash
 git clone <repo> ~/dev/adbm
 ln -s ~/dev/adbm/skill ~/.claude/skills/adbm
-ln -s ~/dev/adbm/skill/agents/adbm-eyes.md ~/.claude/agents/adbm-eyes.md   # субагент с 5 инструментами
 python3 -m pip install Pillow
+~/dev/adbm/skill/bin/adbm setup --hook --agent --yes   # хук-ограждение и агент adbm-eyes
 ~/dev/adbm/skill/bin/adbm doctor
 ```
 
@@ -60,7 +60,11 @@ CLI работает и без Claude Code: `ln -s ~/dev/adbm/skill/bin/adbm /us
 
 **Хук-ограждение.** `skill/hooks/adbm-guard.py` запрещает `Read` полноразмерного кадра и сырого
 дампа UI. Так агент не потратит ~3350 токенов на один скриншот случайно. Плагин ставит хук сам
-(`skill/hooks/hooks.json`). При установке симлинком добавь его в `~/.claude/settings.json`:
+(`skill/hooks/hooks.json`). При установке симлинком `adbm setup --hook --yes` дописывает его в
+`hooks.PreToolUse` файла `~/.claude/settings.json` (или `$CLAUDE_CONFIG_DIR`, если задан). Остальные настройки
+и права файла сохраняются; прежний файл копируется в `settings.json.adbm-backup` рядом с настоящим файлом
+(если это симлинк — рядом с его целью). Хук меняет Claude Code во всех проектах, поэтому ставится только с `--yes`
+после согласия человека. `adbm doctor` до тех пор показывает его как `missing`. Руками блок такой:
 
 ```json
 "hooks": {

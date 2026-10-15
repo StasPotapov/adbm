@@ -256,6 +256,53 @@ class ToolsTest(unittest.TestCase):
         self.assertEqual(decide("/p/build/adbm/r/00-summary.png"), "allow")
         self.assertEqual(decide("/p/src/api35/icon.png"), "allow")
 
+    def test_install_guard_keeps_settings(self):
+        cfg = tempfile.mkdtemp(dir=TMP)
+        base = {"model": "x", "hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "a"}]}]}}
+        with open(os.path.join(cfg, "settings.json"), "w") as f:
+            json.dump(base, f)
+        os.environ["CLAUDE_CONFIG_DIR"] = cfg
+        try:
+            adbm.install_guard()
+            adbm.install_guard()
+            with open(os.path.join(cfg, "settings.json")) as f:
+                got = json.load(f)
+        finally:
+            del os.environ["CLAUDE_CONFIG_DIR"]
+        self.assertEqual(got["model"], "x")
+        self.assertEqual(got["hooks"]["PreToolUse"][0], base["hooks"]["PreToolUse"][0])
+        self.assertEqual(len(got["hooks"]["PreToolUse"]), 2)
+        self.assertTrue(adbm.guard_installed(got))
+
+    def test_install_through_symlink_and_agent_backup(self):
+        cfg = tempfile.mkdtemp(dir=TMP)
+        real = os.path.join(TMP, "dotfiles-settings.json")
+        with open(real, "w") as f:
+            json.dump({"hooks": None}, f)
+        os.chmod(real, 0o600)
+        os.symlink(real, os.path.join(cfg, "settings.json"))
+        os.makedirs(os.path.join(cfg, "agents"))
+        with open(os.path.join(cfg, "agents", "adbm-eyes.md"), "w") as f:
+            f.write("my edits")
+        os.environ["CLAUDE_CONFIG_DIR"] = cfg
+        try:
+            adbm.install_guard()
+            adbm.install_agent()
+            link = adbm.agent_link()
+            self.assertTrue(os.path.islink(os.path.join(cfg, "settings.json")))
+            with open(real) as f:
+                self.assertTrue(adbm.guard_installed(json.load(f)))
+            self.assertEqual(os.stat(real).st_mode & 0o777, 0o600)
+            self.assertEqual(os.path.realpath(link), adbm.agent_target())
+            with open(link + ".adbm-backup") as f:
+                self.assertEqual(f.read(), "my edits")
+        finally:
+            del os.environ["CLAUDE_CONFIG_DIR"]
+
+    def test_guard_command_quotes_the_path(self):
+        cmd = adbm.guard_command()
+        self.assertRegex(cmd, r'^f=("\$HOME/[^"]+"|\S+); \[ -f "\$f" \]')
+
     def test_measure_session(self):
         tr = os.path.join(TMP, "t.jsonl")
         with open(tr, "w") as f:

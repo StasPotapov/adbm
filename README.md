@@ -19,8 +19,8 @@ so screenshots never enter the agent's context:
 
 | Command | What it does |
 |---|---|
-| `adbm doctor` | checks SDK, adb, emulator, Java, Maestro, Pillow, AVDs and their `config.ini` |
-| `adbm setup --api 28,33,35` | system images, AVDs with 4 GB RAM, Maestro, Android CLI; without `--yes` it only prints the plan |
+| `adbm doctor` | checks SDK, adb, emulator, Java, Maestro, Pillow, AVDs and their `config.ini`, the guard hook and the `adbm-eyes` agent |
+| `adbm setup --api 28,33,35` | system images, AVDs with 4 GB RAM, Maestro, Android CLI; `--hook`, `--agent` for Claude Code; without `--yes` it only prints the plan |
 | `adbm devices --start 28,33,35` | boots emulators, prints API → serial → screen |
 | `adbm prep` | animations off, status bar demo mode, theme, navigation mode, font scale |
 | `adbm new <slug>`, `adbm status` | start a run folder, show the current run and counters |
@@ -52,8 +52,8 @@ Requires the Android SDK and Python 3.9+ with Pillow. Scenarios and non-ASCII `a
 ```bash
 git clone <repo> ~/dev/adbm
 ln -s ~/dev/adbm/skill ~/.claude/skills/adbm
-ln -s ~/dev/adbm/skill/agents/adbm-eyes.md ~/.claude/agents/adbm-eyes.md   # the subagent with 5 tools
 python3 -m pip install Pillow
+~/dev/adbm/skill/bin/adbm setup --hook --agent --yes   # guard hook + adbm-eyes agent
 ~/dev/adbm/skill/bin/adbm doctor
 ```
 
@@ -61,7 +61,11 @@ The CLI works without Claude Code too: `ln -s ~/dev/adbm/skill/bin/adbm /usr/loc
 
 **Guard hook.** `skill/hooks/adbm-guard.py` denies `Read` of a full-size frame or a raw UI dump,
 so an agent cannot spend ~3350 tokens on one screenshot by accident. As a plugin, ADBM registers it
-itself (`skill/hooks/hooks.json`). With the symlink install, add it to `~/.claude/settings.json`:
+itself (`skill/hooks/hooks.json`). With the symlink install `adbm setup --hook --yes` appends it to
+`hooks.PreToolUse` in `~/.claude/settings.json` (`$CLAUDE_CONFIG_DIR` if set). It keeps the other settings and the
+file mode; a copy of the old file goes to `settings.json.adbm-backup` next to the real file (through a symlink —
+next to its target). It changes Claude Code for every project, so it runs only with `--yes` after the person agrees.
+`adbm doctor` reports the hook as `missing` until then. By hand, the block is:
 
 ```json
 "hooks": {
