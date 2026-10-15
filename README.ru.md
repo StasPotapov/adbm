@@ -51,6 +51,7 @@ index.html  manifest.js  00-summary.png
 ```bash
 git clone <repo> ~/dev/adbm
 ln -s ~/dev/adbm/skill ~/.claude/skills/adbm
+ln -s ~/dev/adbm/skill/agents/adbm-eyes.md ~/.claude/agents/adbm-eyes.md   # субагент с 5 инструментами
 python3 -m pip install Pillow
 ~/dev/adbm/skill/bin/adbm doctor
 ```

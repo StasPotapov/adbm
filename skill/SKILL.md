@@ -14,181 +14,69 @@ allowed-tools:
 
 # ADBM — Android Debug Bridge Matrix
 
-The CLI is in `bin/` of this skill:
+The CLI is `bin/adbm` of this skill: `ADBM="${CLAUDE_SKILL_DIR}/bin/adbm"`. If the variable is not
+substituted, take the folder from the "Base directory for this skill" line. Run commands from the
+project root: runs go to `<project>/build/adbm/<date>-<slug>/`. The project is the git root of the
+current folder; `ADBM_PROJECT=<path>` overrides it. Help: `"$ADBM" <command> -h`. Commands below
+omit the prefix: run `"$ADBM" <command>`, and set the variable in every Bash call (it does not persist).
 
-```bash
-ADBM="${CLAUDE_SKILL_DIR}/bin/adbm"
-```
+## Request → first command
 
-If the variable is not substituted, take the folder from the "Base directory for this skill" line.
+| The person asks | Run |
+|---|---|
+| what is on the screen | `ui --api 35` (`--find <text>` to narrow) |
+| tap, open a screen | `tap "<text>" --expect "<text on the next screen>"` |
+| type into a field | `type "<text>"`; non-Latin — see "Limitations" |
+| install, launch, stop, clear data | `install <apk>`, `launch <pkg>`, `stop`, `clear`, `uninstall` |
+| logs, crash | `log` (the app's process), `log --crash`, `log --grep <re>` |
+| deep link, permission, file | `open <uri>`, `perm <pkg> grant CAMERA`, `push`, `pull` |
+| which devices, boot an emulator | `devices`, `devices --start 33,35`, `devices --stop 33` |
+| how it looks, before/after, several API levels, themes | "Visual check" below |
 
-Run all commands from the project root: runs go to `<project>/build/adbm/<date>-<slug>/`.
-Help for a command: `"$ADBM" <command> -h`.
+A single action needs no `doctor`, `new`, `diff` or `board`. Only `new` and `run` start a run; outside one
+`adbm` writes to `~/.cache/adbm/`, and `shot`/`record` frames there are unseen by `diff` and `board`.
+Rare actions: `reference/adb.md`. `doctor` only if something does not start. Address devices by `--api N`.
 
-## Just an action on the device
+## Token economy
 
-If you are asked to do something on a device without a layout check, run the command right away.
-Examples: "install the APK", "open the screen", "tap", "type", "show the logs", "what is on the screen".
-Then you do not need `doctor`, API selection, `new`, frames, `diff` or `board`.
+A 1080×2400 image costs ~3350 tokens, a line of `adbm ui` ~15.
 
-```bash
-"$ADBM" devices                              # devices and their API levels
-"$ADBM" install app.apk --api 35                   # --as after is the default
-"$ADBM" launch <package> --api 35
-"$ADBM" ui --api 35                          # what is on the screen, as text
-"$ADBM" tap --api 35 "Sign in"               # prints what appeared and went away on the screen
-"$ADBM" tap --api 35 "Sign in" --expect "Email"   # one line: ok, or not found + 5 lines of the screen
-"$ADBM" wait --api 35 "Welcome" --timeout 15      # assert "<text>" — the same without waiting
-"$ADBM" type --api 35 "user@example.com"
-"$ADBM" key --api 35 back
-```
+1. **Navigate by text.** `ui`, then `tap "<text>"`. `tap` prints what appeared and went away;
+   `--expect` confirms the next screen in one line. Do not call `ui` after every tap.
+   A tap by `x,y` or `#N` prints no change — add `--expect`. `[N]` from `ui` works only on that screen.
+2. **Do not open frames.** `shot` and `run` save frames to the run, not to the context. Never `Read` a file
+   from `api*/`. `adbm diff` decides what changed; the `adbm-eyes` subagent looks at images.
+3. **One picture when nothing else helps:** `look` (540 px, ~860 tokens), `--small` (~380), `--crop` (up to
+   ~1850). Screen coordinate = image coordinate / `scale` from the output. Over 3 `look` per task — stop.
+4. **Logs:** read only on failure and only the part you need (`tail`, `grep`).
 
-Outside a run, `adbm` does not create `build/adbm/` in the project: its service files go to `~/.cache/adbm/`.
-Logs, deep links, Wi-Fi, density, accessibility and other rare actions: raw adb from `reference/adb.md`.
-Run `"$ADBM" doctor` only if something does not start.
+`adbm status` estimates what `adbm` put into the context. If the guard hook is installed (plugin, or
+`settings.json` per the README), it denies `Read` of a frame or a raw XML dump: do what the denial says.
 
-All rules below apply to visual checks: frames, "before/after" comparison and flows.
+## Visual check
 
-## Token economy — rules first
+1. **Environment.** `doctor`. Rows marked `missing` that block the task — show them with the fix and
+   ask; `setup …` without `--yes` only prints the plan (`reference/setup.md`).
+2. **API levels.** Find `minSdk`/`targetSdk` in `build.gradle*`. Default — API 35 only. For insets, navbar,
+   theme, permissions, back navigation offer a set with reasons from `reference/api-matrix.md` and wait.
+3. **Run and builds.** `new <slug>`, then `install <before.apk> --as before --api …`. A device holds one
+   build at a time: all "before" frames first, then `install <after.apk>` and all "after" frames.
+4. **Frames.** By hand for 1–2 frames on 1–2 API levels: `prep`, `launch`, `tap`, `shot <name>`.
+   A Maestro flow when the path is longer than 3–4 steps, for a theme/navigation/font matrix, for
+   three API levels or when the check repeats: `flow new <slug>`, then `run .adbm/flows/<slug>.yaml --api 35`,
+   then all API levels with `--matrix`. Details, axes, video: `reference/workflow.md`; writing flows:
+   `reference/flows.md`; a failed or hung `run`: `reference/troubleshooting.md`.
+5. **Diff and board.** `diff`, then `board`. Then start `adbm-eyes` (next section).
+6. **Report.** `<run>/index.html`; counts of expected/problem/review/unchanged; what broke where; 1–3 frames.
 
-A 1080×2400 image costs ~3350 tokens, a line of the UI tree ~15. So:
+**Which build a frame belongs to:** `--as before|after` on `shot`/`run`; without it — the build of the
+last `install` (the run's `.as` file); with no install — `after`.
 
-1. **Navigate by text only.** Read the screen with `adbm ui` or `adbm ui --find <text>`.
-   Tap by selector: `adbm tap "Close"`. Do not guess coordinates from an image.
-   After `tap` by text or `[N]` do not call `ui` again: `tap` prints what changed on the screen, and
-   `tap … --expect "<text>"` confirms the next screen in one line. A tap by `x,y` or `#N` prints
-   no change: add `--expect`. `[N]` works only while the screen of the last `ui` is still shown.
-2. **`adbm diff` decides "did it change"**, not you. It reports the percent and area of change,
-   compares the status bar apart, and marks a pair `≈ apiN` when it changed the same way as on
-   another API level. For frames from `adbm shot` it also reports element shifts (`"Close" ↓48 px`):
-   the UI tree is saved next to the frame. Maestro frames have no tree. Nobody looks at unchanged pairs.
-3. **`adbm shot` and `adbm run` only save frames.** Do not open files from `api*/` with Read.
-4. **If you cannot do without an image** — `adbm look` (540 px, ~860 tokens), `--small` (360 px, ~380),
-   `--crop x0,y0,x1,y1` for a fragment. The output has `scale`: screen coordinate = image
-   coordinate / scale. More than 3 `look` calls per task is a reason to stop and think.
-5. **The `adbm-eyes` subagent judges the frames** (see "Check"). It looks at the contact sheet,
-   diff crops, the 540 px diff and `adbm thumb` copies, and returns up to 10 lines.
-6. **Command output is short.** Details are in `<run>/logs/`. Read a log only on failure
-   and only the part you need: `tail`, `grep`.
+## The adbm-eyes subagent
 
-`<run>/stats.json` counts frames taken, images sent to the main context and characters of `adbm`
-output. `adbm status` prints the estimate in tokens. Navigation commands (`ui`, `tap`, `wait`) count
-into the current run if it was active in the last 12 hours.
-
-If the guard hook is installed (plugin, or `settings.json` per the README), it denies `Read` of a
-full-size frame from `api*/` and of a raw XML dump from `logs/`. On a denial, do what its text says.
-Without the hook the rule is yours to keep.
-
-## Workflow
-
-### 1. Environment
-
-`"$ADBM" doctor`. If rows marked `missing` block the task, show them to the person with
-the fix commands and ask whether to install. `adbm setup …` without `--yes` only prints the plan.
-Details: `reference/setup.md`.
-
-### 2. API levels
-
-First find the app's `minSdk` and `targetSdk`: `grep -rn "minSdk\|targetSdk"` over `build.gradle*`
-and `libs.versions.toml`. Do not offer emulators below `minSdk`. `adbm install` also reads
-`minSdk` from the APK and skips such devices, and so does `adbm run`. If `targetSdk` ≥ 35,
-edge-to-edge is enforced — a reason to include API 35.
-
-By default check on one API level — 35. If the change touches system parts (insets, navbar,
-theme, permissions, back navigation), offer a set of API levels with reasons from
-`reference/api-matrix.md` and wait for the answer. Example: "Sheet insets → 28, 33, 35: edge-to-edge is enforced on 35".
-
-`"$ADBM" devices --start 28,33,35` boots missing emulators. Always address a device by `--api N`:
-the serial changes between launches.
-
-### 3. Run folder and builds
-
-```bash
-"$ADBM" new <slug>                                   # new run folder
-"$ADBM" install <before.apk> --as before --api 28,33,35
-```
-
-"Before": capture before the change, or build the base commit in a `git worktree` (`reference/setup.md`).
-"After": the current code. A device holds one version at a time: first everything "before", then everything "after".
-
-### 4. Actions: by hand or by flow
-
-**By hand** — when you need one or two frames on one or two API levels and the path to the screen is short:
-
-```bash
-"$ADBM" prep --api 35 --theme dark            # animations off, status bar demo mode
-"$ADBM" launch <package> --api 35 --clear
-"$ADBM" ui --api 35                           # [3] Button "Close" id=close click; --xy adds @x,y
-"$ADBM" tap --api 35 "Close" --expect "Saved" # text, content-desc, id; --scroll 4 to scroll
-"$ADBM" shot 1-sheet --api 35 --as before     # frame into the run, not into the context
-```
-
-There are also `type`, `clear-field`, `key back|home|enter|hide-keyboard`, `swipe up|down|x0,y0,x1,y1`,
-`tap --long|--double`, `tap "[N]"` by number from `ui`, `rotate`, `open <deep link>`, `perm`, `log`.
-Switches without a label show as `near="<row text>"`: tap the row text.
-For a screen without a tree (Canvas, a game): `annotate` and `tap '#N'` through Android CLI.
-
-**A flow is required** if any of these is true:
-- the path to the screen is longer than 3–4 steps;
-- you need a matrix of themes, navigation modes or font scales;
-- three API levels or a "before/after" pair;
-- the check will be repeated.
-
-Then write a Maestro flow following `reference/flows.md` and run it:
-
-```bash
-"$ADBM" run .adbm/flows/<slug>.yaml --api 35                  # one API level first
-"$ADBM" run .adbm/flows/<slug>.yaml --api 28,33,35 --as before \
-  --matrix "nav=threebutton,gestural" "theme=light,dark"
-```
-
-Frame subfolders follow the axis order: `api35/before/gestural/dark/<frame>.png`.
-Axes outside `--matrix` take what `adbm prep` set by hand on that device, else the defaults:
-light theme, three-button navigation, font scale 1.0. `adbm prep --reset` restores the defaults
-and forgets the hand-set values. `prep` checks that the device took the setting and exits with 1 if not.
-Dark theme is not applied to the system UI on API 28, see `reference/api-matrix.md`.
-`run` drives all API levels in parallel and prints one line per cell. On failure read
-`logs/ui-fail-*.txt` (the screen tree) and the reason line, not a screenshot.
-
-**Hangs and failures.** `adbm run` watches Maestro itself and prints its limits in the `watchdog:` line.
-- **Silence** (`--stall`) — the longest wait in the flow and the flows it includes via `runFlow`
-  (`timeout:` of `extendedWaitUntil` and others) plus 20 s, at least 45 s. Maestro prints a step
-  only after it ends, so the limit must be longer than the longest step. Before Maestro's first
-  output line the limit is at least 120 s: JVM start and driver install print nothing.
-- **Cell** (`--timeout`) — 2 × the slowest last successful run of this flow among the chosen API levels,
-  at least 90 s.
-  Without history — 600 s, a safety net: silence catches a hang earlier.
-- **Set your own limit** only if you know more than `adbm`. Example: a step without an explicit `timeout`
-  waits for the network or a long data load — better add `timeout:` to that step in the flow.
-
-When a limit is exceeded, `adbm` kills Maestro and prints `HUNG … after step "…"`.
-Next to it is a diagnosis: the device is offline, a system dialog "isn't responding" or "has stopped"
-is on screen, or which window has focus. What to do:
-- **device not responding** — `adbm devices`. If the emulator is missing,
-  `adb -s <serial> emu kill`, then `adbm devices --start <API>`;
-- **"isn't responding" or "has stopped" dialog** — this is a finding, not a tool failure:
-  `logs/crash-*.txt`, `adb logcat -b crash`. Tell the person and close the dialog with `adbm tap`;
-- **a foreign window has focus** (permission, keyboard, system dialog) — add a step to the flow;
-- **the same step hangs twice** — do not retry a third time; show the person the step and the diagnosis.
-
-Run your own long commands (`./gradlew`, `adbm run`) with a Bash timeout of at least 10 minutes
-or in the background. Do not wait silently: no result in a reasonable time — check `adbm devices` and the log.
-
-**Switching:** a manual check grew — `"$ADBM" save-flow <slug> --api 35`, then continue with the flow.
-
-Record animations or "jumps" as video: `"$ADBM" record <name> --api 35 --seconds 5 --slow 3 -- <command>`.
-You get an mp4 and a contact sheet `-sheet.png` for the subagent.
-
-### 5. Check
-
-```bash
-"$ADBM" diff      # one line per changed pair; diff/*.png 540 px, *.crop.png, *.top.png, diff.json
-"$ADBM" board     # index.html + 00-summary.png of changed pairs (≤ 24 frames, else one PNG per API)
-```
-
-Then start the `adbm-eyes` subagent. If ADBM is installed as a plugin, it is the `adbm:adbm-eyes` agent.
-Otherwise use the Agent tool with `subagent_type: general-purpose`, `model: sonnet`, and as the prompt
-the content of `agents/adbm-eyes.md` without frontmatter. In both cases add this block at the end of the prompt:
+Use the agent type `adbm-eyes` (`adbm:adbm-eyes` when ADBM is a plugin) if the Agent tool lists it.
+Otherwise: Agent with `subagent_type: general-purpose`, `model: sonnet`, and as the prompt the content
+of `agents/adbm-eyes.md` without frontmatter. Append to the prompt:
 
 ```
 Task: <what was changed and what should come out>
@@ -199,46 +87,24 @@ Changed pairs:
 <adbm diff output>
 ```
 
-Frames only "after" (one build, no "before"): `adbm diff` prints `after only: N frames`, and the
-subagent judges every frame by the checklist.
-
-The subagent appends its verdict to `<run>/notes.md`. Then run `"$ADBM" board` again:
-the board colours the frames. The statuses:
-- **unchanged** — set by `adbm diff`; the subagent does not look at such pairs;
-- **expected** — changed as intended;
-- **problem** — a defect, or a change where none was expected;
-- **review** — the subagent is not sure; a person should look.
-
-If needed, open the board: `"$ADBM" board --open`.
-
-### 6. Report to the person
-
-- Path to the board: `<run>/index.html`.
-- Summary in 3 lines: how many expected, problem, review, unchanged;
-  what is broken and on which API levels.
-- What to look at: 1–3 frames with paths.
+It writes the verdict to `<run>/notes.md` and returns up to 10 lines. Then `board` again (`--open` to show it).
 
 ## References
 
 | File | When to read |
 |---|---|
-| `reference/setup.md` | SDK, system images, AVDs, Maestro, Android CLI, "before" build in a worktree |
-| `reference/api-matrix.md` | which API levels and matrix axes to offer for a change |
-| `reference/flows.md` | how to write and fix a Maestro flow |
-| `reference/adb.md` | raw adb for rare actions: logs, deep links, Wi-Fi, accessibility |
+| `reference/workflow.md` | by-hand frames, flows and matrix axes, video, the check in detail |
+| `reference/troubleshooting.md` | `run` failed or hung, black or empty frames, device problems |
+| `reference/flows.md` | writing and fixing a Maestro flow |
+| `reference/api-matrix.md` | which API levels and axes to offer for a change |
+| `reference/setup.md` | SDK, AVDs, Maestro, Android CLI, a "before" build in a worktree |
+| `reference/adb.md` | raw adb for what `adbm` does not do |
 
 ## Limitations
 
-- **Non-Latin text** (Cyrillic and others): `input text` cannot type it; in a flow Maestro `inputText` can.
-  By hand, `adbm type --unicode "<text>"` installs ADB Keyboard (a third-party APK from GitHub), types,
-  then switches the keyboard back and removes the APK. **Before the first such call tell the person**
-  that a third-party APK will be installed and removed.
-- API 28 has no gesture navigation: `nav=gestural` cells are skipped.
-- `prep --locale` works on API 33+ and needs `--app <package>`. `adbm run` finds the package itself:
-  from `builds.json` or the flow's `appId`. A `locale` cell without a package or below API 33 is skipped.
-- **Screenshot protection (`FLAG_SECURE`)** — common in banking apps and password managers. The frame
-  comes out empty (Maestro: `Screenshot returned null`) or black. `run` drops empty frames, keeps black
-  ones as evidence and marks the cell failed; `shot` warns.
-  Turn the protection off in the app as the first steps of the flow, or in a debug build.
-- `adbm` sees physical devices, but when API levels match it picks the emulator.
-  Address a physical device with `--serial`.
+- **Non-Latin text:** `input text` cannot type it; in a flow Maestro `inputText` can. By hand,
+  `type --unicode` installs ADB Keyboard (a third-party APK from GitHub), types, restores the keyboard
+  and removes the APK. **Tell the person before the first such call.**
+- **`FLAG_SECURE`** (banks, password managers): empty or black frames — see `reference/troubleshooting.md`.
+- API 28: no gesture navigation (`nav=gestural` cells are skipped); dark theme does not reach its system UI.
+- A physical device is picked only when no emulator has that API level: address it with `--serial`.

@@ -52,6 +52,7 @@ Requires the Android SDK and Python 3.9+ with Pillow. Scenarios need Maestro, vi
 ```bash
 git clone <repo> ~/dev/adbm
 ln -s ~/dev/adbm/skill ~/.claude/skills/adbm
+ln -s ~/dev/adbm/skill/agents/adbm-eyes.md ~/.claude/agents/adbm-eyes.md   # the subagent with 5 tools
 python3 -m pip install Pillow
 ~/dev/adbm/skill/bin/adbm doctor
 ```

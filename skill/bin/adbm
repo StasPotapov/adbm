@@ -1578,10 +1578,18 @@ def default_as(run, a):
     return open(p).read().strip() if os.path.exists(p) else "after"
 
 
+def frames_home(a):
+    """Where shot/record write: (folder, build version, in a run). Only `new` and `run` start a run;
+    outside one, frames go to the project's cache and the build comes from the project's last install."""
+    run = current_run(create=False)
+    if run:
+        return run, default_as(run, a), True
+    return os.path.join(project_cache(), "shots"), default_as(project_cache(), a), False
+
+
 def cmd_shot(a):
     targets = pick(a, multi=True)
-    run = current_run(slug=a.name)
-    version = default_as(run, a)
+    run, version, in_run = frames_home(a)
 
     def one(api, s):
         data = screencap(s)
@@ -1598,11 +1606,14 @@ def cmd_shot(a):
         return p
 
     paths = parallel(targets, one)
-    stats_add(run, frames=len(paths))
+    if in_run:
+        stats_add(run, frames=len(paths))
     for api, _ in targets:
         session_log({"api": api, "op": "shot", "name": a.name, "group": a.group or ""})
     for (api, _), p in zip(targets, paths):
         print(f"{api}: {rel(p)}")
+    if not in_run:
+        print(NO_RUN_HINT)
     return 0
 
 
@@ -2330,10 +2341,12 @@ def cmd_diff(a):
 
 # ---------------------------------------------------------------- record
 
+NO_RUN_HINT = "no run: saved to the project cache, not seen by diff and board — adbm new <slug> first"
+
+
 def cmd_record(a):
     api, s = pick(a)[0]
-    run = current_run(slug=a.name)
-    version = default_as(run, a)
+    run, version, in_run = frames_home(a)
     d = os.path.join(run, "video", f"api{api}", version)
     os.makedirs(d, exist_ok=True)
     base = os.path.join(d, slugify_name(a.name))
@@ -2371,6 +2384,8 @@ def cmd_record(a):
     print(f"{api}: {rel(base + '.mp4')} ({human_size(os.path.getsize(base + '.mp4'))})"
           + (f" · contact sheet {rel(sheet)}" if os.path.exists(sheet) else " · no ffmpeg, no contact sheet")
           + (f" · command returned {cmd_rc}" if cmd_rc else ""))
+    if not in_run:
+        print(NO_RUN_HINT)
     return 0
 
 

@@ -89,10 +89,7 @@ After `save-flow` run the flow once and fix the selectors.
 
 ## Failure
 
-`adbm run` prints one line per cell: the reason from Maestro and the path to the log.
-Next to it are `logs/ui-fail-<cell>.txt` — the screen tree at the moment of failure —
-and `logs/crash-<cell>.txt` if the app crashed (`logcat -b crash`).
-Fix the flow from these files. Do not open the failure screenshot if the tree answers the question.
+A failed or hung cell, black frames, device problems: `troubleshooting.md`.
 
 ## Screenshot protection
 

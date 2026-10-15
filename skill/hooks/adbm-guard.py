@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """PreToolUse hook for Read: keeps full-size adbm frames and raw UI dumps out of the context.
 
-Denies a Read of a frame `build/adbm/<run>/api<N>/**.png` and of a raw `uiautomator` XML dump
+Denies a Read of a frame `build/adbm/<run>/api<N>/**.png` (or a frame shot outside a run, in
+`~/.cache/adbm/projects/<id>/shots/`) and of a raw `uiautomator` XML dump
 `logs/ui-api<N>-*.xml`. The contact sheet, diff crops, diffs and `look/` images pass: they are
 downscaled. A diff made with `adbm diff --full` has the same name as a 540 px one and passes too.
 """
@@ -9,7 +10,7 @@ import json
 import re
 import sys
 
-FRAME = re.compile(r"/build/adbm/[^/]+/api\d+/.+\.png$")
+FRAME = re.compile(r"/(?:build/adbm/[^/]+|\.cache/adbm/projects/[^/]+/shots)/api\d+/.+\.png$")
 XML = re.compile(r"/logs/ui-api\d+-[^/]*\.xml$")
 
 
