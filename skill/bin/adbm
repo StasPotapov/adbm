@@ -11,6 +11,7 @@ Maestro for flows. ffmpeg for record.
 """
 import argparse
 import concurrent.futures as cf
+import configparser
 import contextlib
 import datetime as dt
 import fcntl
@@ -678,6 +679,87 @@ def install_agent():
     os.symlink(agent_target(), link)
 
 
+# ---------------------------------------------------------------- settings: subagent models
+
+AGENT_DEFAULTS = {"adbm-eyes": {"model": "sonnet", "effort": ""}}
+EFFORTS = ("low", "medium", "high", "xhigh", "max")
+MODEL_ALIASES = ("sonnet", "opus", "haiku", "fable")
+CONFIG_TEMPLATE = """\
+# adbm settings. A project's .adbm/config.ini overrides values from ~/.config/adbm/config.ini.
+# Claude Code: the adbm skill passes these values to the Agent tool when it starts a subagent.
+# Another agent tool: adapt the "adbm-eyes subagent" section of SKILL.md to it.
+
+[adbm-eyes]
+# The subagent that looks at frames. Model alias of the Agent tool: sonnet, opus, haiku, fable.
+# Empty: the default of the agent type (in the general-purpose fallback: the main session's model).
+model = {model}
+# Reasoning effort: low, medium, high, xhigh, max. Empty: the usual effort.
+effort =
+""".format(model=AGENT_DEFAULTS["adbm-eyes"]["model"])
+
+
+def config_paths():
+    user = os.path.join(os.path.expanduser(os.environ.get("XDG_CONFIG_HOME") or "~/.config"), "adbm", "config.ini")
+    return [("user", user), ("project", os.path.join(project_root(), ".adbm", "config.ini"))]
+
+
+def load_config():
+    """Agent settings: {agent: {key: (value, source)}} with the project over the user file, and problems."""
+    cfg = {ag: {k: (v, "default") for k, v in d.items()} for ag, d in AGENT_DEFAULTS.items()}
+    problems = []
+    for src, path in config_paths():
+        if not os.path.exists(path):
+            continue
+        # no DEFAULT section: its keys would leak into every agent
+        cp = configparser.ConfigParser(interpolation=None, inline_comment_prefixes=("#", ";"), default_section="\0")
+        try:
+            if not cp.read(path, encoding="utf-8"):
+                problems.append(f"{rel(path)}: cannot read the file")
+                continue
+        except (configparser.Error, UnicodeDecodeError) as e:
+            problems.append(f"{rel(path)}: {str(e).splitlines()[0]}")
+            continue
+        for sec in cp.sections():
+            if sec not in cfg:
+                problems.append(f"{rel(path)}: unknown section [{sec}], known: {', '.join(cfg)}")
+                continue
+            for k, v in cp.items(sec):
+                v = v.strip().lower()
+                if k not in cfg[sec]:
+                    problems.append(f"{rel(path)}: [{sec}] unknown key {k}, known: {', '.join(cfg[sec])}")
+                elif k == "effort" and v and v not in EFFORTS:
+                    problems.append(f"{rel(path)}: [{sec}] effort={v}, allowed: {', '.join(EFFORTS)} or empty")
+                elif k == "model" and v and v not in MODEL_ALIASES:
+                    problems.append(f"{rel(path)}: [{sec}] model={v}, allowed: {', '.join(MODEL_ALIASES)} or empty")
+                else:
+                    cfg[sec][k] = (v, src)
+    return cfg, problems
+
+
+def agent_line(name, d):
+    return f"{name}  " + "  ".join(f"{k}={v or '-'} ({src})" for k, (v, src) in d.items())
+
+
+def cmd_config(a):
+    if a.project and not a.init:
+        die("--project works only with --init")
+    if a.init:
+        path = dict(config_paths())["project" if a.project else "user"]
+        if os.path.exists(path):
+            die(f"{rel(path)} already exists — edit it")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            f.write(CONFIG_TEMPLATE)
+        print(f"written {rel(path)}")
+    cfg, problems = load_config()
+    for name, d in cfg.items():
+        print(agent_line(name, d))
+    for p in problems:
+        print("! " + p)
+    print("files: " + ", ".join(f"{rel(p)}{'' if os.path.exists(p) else ' (none)'}" for _, p in config_paths()))
+    return 1 if problems else 0
+
+
 def claude_rows():
     """doctor rows for the Claude Code side: the guard hook and the adbm-eyes agent."""
     if not os.path.isdir(claude_dir()):
@@ -742,6 +824,10 @@ def cmd_doctor(a):
         "adbm setup --android-cli --yes")
     for ok, name, detail, fix in claude_rows():
         row(ok, name, detail, fix)
+    cfg, problems = load_config()
+    row(None if problems else True, "subagent models", "; ".join(problems) or
+        ", ".join(f"{n} {d['model'][0] or '-'}/{d['effort'][0] or '-'}" for n, d in cfg.items()),
+        "adbm config" if problems else "")
     # system images and AVDs
     if root:
         imgs = sorted(glob.glob(os.path.join(root, "system-images", "android-*", "*", "*")))
@@ -2938,6 +3024,9 @@ def main():
         return p
 
     add("doctor", cmd_doctor, "check the environment")
+    p = add("config", cmd_config, "subagent models and effort from ~/.config/adbm/config.ini and .adbm/config.ini")
+    p.add_argument("--init", action="store_true", help="write a config file with the defaults")
+    p.add_argument("--project", action="store_true", help="with --init: the project's .adbm/config.ini")
     p = add("setup", cmd_setup, "install system images, AVDs, Maestro, Android CLI (without --yes: plan only)")
     p.add_argument("--api")
     p.add_argument("--tune", action="store_true", help="fix config.ini of existing AVDs")

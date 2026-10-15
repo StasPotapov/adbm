@@ -24,7 +24,8 @@ Claude Code skill и CLI `adbm`: агент работает с Android-устр
 
 | Команда | Что делает |
 |---|---|
-| `adbm doctor` | проверяет SDK, adb, emulator, Java, Maestro, Pillow, AVD и их `config.ini`, хук-ограждение и агента `adbm-eyes` |
+| `adbm doctor` | проверяет SDK, adb, emulator, Java, Maestro, Pillow, AVD и их `config.ini`, хук-ограждение, агента `adbm-eyes` и модели субагентов |
+| `adbm config` | модель и effort субагентов из `~/.config/adbm/config.ini` и `.adbm/config.ini`; `--init` пишет файл со значениями по умолчанию |
 | `adbm setup --api 28,33,35` | образы, AVD с 4 ГБ памяти, Maestro, Android CLI; `--hook`, `--agent` для Claude Code; без `--yes` — только план |
 | `adbm devices --start 28,33,35` | поднимает эмуляторы, печатает API → serial → экран |
 | `adbm prep` | анимации 0, demo mode статус-бара, тема, навигация, шрифт |
@@ -78,6 +79,27 @@ CLI работает и без Claude Code: `ln -s ~/dev/adbm/skill/bin/adbm /us
     "command": "f=~/.claude/skills/adbm/hooks/adbm-guard.py; [ -f \"$f\" ] || exit 0; exec python3 \"$f\"" }] }]
 }
 ```
+
+**Модели субагентов.** Субагент `adbm-eyes` по умолчанию работает на `sonnet`, effort не задан:
+у агента остаётся его обычный effort. Чтобы поменять модель или effort, создай файл настроек и поправь его:
+
+```bash
+adbm config --init            # ~/.config/adbm/config.ini ($XDG_CONFIG_HOME, если задан), для всех проектов
+adbm config --init --project  # .adbm/config.ini, только для этого проекта
+adbm config                   # итоговые значения и откуда они взяты
+```
+
+```ini
+[adbm-eyes]
+model = haiku     # sonnet, opus, haiku, fable; пусто — модель типа агента
+effort = low      # low, medium, high, xhigh, max; пусто — обычный effort
+```
+
+Значения из файла проекта перекрывают пользовательский файл. Если тип `adbm-eyes` не установлен,
+скилл запускает `general-purpose`, и пустой `model` там означает модель главной сессии. Скилл перед запуском субагента вызывает
+`adbm config` и передаёт `model` и `effort` в инструмент Agent. Это работает только в Claude Code.
+Если ты работаешь в другом инструменте (Codex и т. п.), перепиши под него раздел
+«The adbm-eyes subagent» в `skill/SKILL.md` и файл `skill/agents/adbm-eyes.md`.
 
 **Замер сессии.** `tools/measure-session.py <transcript.jsonl>` показывает, сколько сессия
 Claude Code потратила на `adbm`: символы вывода по командам и прочитанные картинки.

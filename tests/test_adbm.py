@@ -299,6 +299,38 @@ class ToolsTest(unittest.TestCase):
         finally:
             del os.environ["CLAUDE_CONFIG_DIR"]
 
+    def test_config_project_over_user(self):
+        xdg = os.path.join(TMP, "xdg")
+        os.makedirs(os.path.join(xdg, "adbm"), exist_ok=True)
+        os.makedirs(os.path.join(os.environ["ADBM_PROJECT"], ".adbm"), exist_ok=True)
+        user = os.path.join(xdg, "adbm", "config.ini")
+        proj = os.path.join(os.environ["ADBM_PROJECT"], ".adbm", "config.ini")
+        old = os.environ.get("XDG_CONFIG_HOME")
+        os.environ["XDG_CONFIG_HOME"] = xdg
+        try:
+            cfg, problems = adbm.load_config()
+            self.assertEqual(cfg["adbm-eyes"], {"model": ("sonnet", "default"), "effort": ("", "default")})
+            open(user, "w").write(adbm.CONFIG_TEMPLATE.replace("model = sonnet", "model = haiku   # cheap"))
+            open(proj, "w").write("[adbm-eyes]\neffort = low\n")
+            cfg, problems = adbm.load_config()
+            self.assertEqual(problems, [])
+            self.assertEqual(cfg["adbm-eyes"], {"model": ("haiku", "user"), "effort": ("low", "project")})
+            open(proj, "w").write("[DEFAULT]\nmodel = opus\n[adbm-eyes]\neffort = High\n")
+            cfg, problems = adbm.load_config()
+            self.assertEqual(cfg["adbm-eyes"], {"model": ("haiku", "user"), "effort": ("high", "project")})
+            self.assertEqual(len(problems), 1)
+            open(proj, "w").write("[adbm-eyes]\neffort = turbo\nmodel = claude-x\nmodl = x\n[eyes]\n")
+            cfg, problems = adbm.load_config()
+            self.assertEqual(cfg["adbm-eyes"], {"model": ("haiku", "user"), "effort": ("", "user")})
+            self.assertEqual(len(problems), 4)
+        finally:
+            if old is None:
+                os.environ.pop("XDG_CONFIG_HOME", None)
+            else:
+                os.environ["XDG_CONFIG_HOME"] = old
+            if os.path.exists(proj):
+                os.remove(proj)
+
     def test_guard_command_quotes_the_path(self):
         cmd = adbm.guard_command()
         self.assertRegex(cmd, r'^f=("\$HOME/[^"]+"|\S+); \[ -f "\$f" \]')

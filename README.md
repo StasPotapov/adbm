@@ -24,7 +24,8 @@ A 1080×2400 screenshot costs a model ~3350 tokens, so screenshots never enter t
 
 | Command | What it does |
 |---|---|
-| `adbm doctor` | checks SDK, adb, emulator, Java, Maestro, Pillow, AVDs and their `config.ini`, the guard hook and the `adbm-eyes` agent |
+| `adbm doctor` | checks SDK, adb, emulator, Java, Maestro, Pillow, AVDs and their `config.ini`, the guard hook, the `adbm-eyes` agent and the subagent models |
+| `adbm config` | model and effort of subagents from `~/.config/adbm/config.ini` and `.adbm/config.ini`; `--init` writes a file with the defaults |
 | `adbm setup --api 28,33,35` | system images, AVDs with 4 GB RAM, Maestro, Android CLI; `--hook`, `--agent` for Claude Code; without `--yes` it only prints the plan |
 | `adbm devices --start 28,33,35` | boots emulators, prints API → serial → screen |
 | `adbm prep` | animations off, status bar demo mode, theme, navigation mode, font scale |
@@ -78,6 +79,27 @@ next to its target). It changes Claude Code for every project, so it runs only w
     "command": "f=~/.claude/skills/adbm/hooks/adbm-guard.py; [ -f \"$f\" ] || exit 0; exec python3 \"$f\"" }] }]
 }
 ```
+
+**Subagent models.** The `adbm-eyes` subagent runs on `sonnet` by default, with no effort set:
+the agent keeps its usual effort. To change the model or effort, create a settings file and edit it:
+
+```bash
+adbm config --init            # ~/.config/adbm/config.ini ($XDG_CONFIG_HOME if set), for all projects
+adbm config --init --project  # .adbm/config.ini, for this project only
+adbm config                   # the effective values and where they come from
+```
+
+```ini
+[adbm-eyes]
+model = haiku     # sonnet, opus, haiku, fable; empty — the default of the agent type
+effort = low      # low, medium, high, xhigh, max; empty — the usual effort
+```
+
+The project file overrides the user file. If the `adbm-eyes` type is not installed,
+the skill starts `general-purpose`, and an empty `model` there means the main session's model. Before it starts the subagent, the skill runs `adbm config`
+and passes `model` and `effort` to the Agent tool. This works only in Claude Code.
+If you use another tool (Codex and others), adapt the "The adbm-eyes subagent" section
+of `skill/SKILL.md` and `skill/agents/adbm-eyes.md` to it.
 
 **Measuring a session.** `tools/measure-session.py <transcript.jsonl>` prints what a Claude Code
 session spent on `adbm`: characters of output per command and images read.

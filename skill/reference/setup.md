@@ -14,6 +14,8 @@
 | `adbm-eyes` agent (Claude Code) | the subagent with 5 tools, a small start context | `adbm setup --agent --yes`: a link in `~/.claude/agents/`; a plugin install has it |
 
 `adbm doctor` checks all of this and prints a fix command for every row.
+Model and effort of `adbm-eyes`: `adbm config` (`--init` writes `~/.config/adbm/config.ini`,
+`--init --project` — `.adbm/config.ini`; the project file wins).
 `doctor` itself installs nothing.
 
 ## `adbm setup`

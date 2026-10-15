@@ -76,8 +76,14 @@ last `install` (the run's `.as` file); with no install — `after`.
 ## The adbm-eyes subagent
 
 Use the agent type `adbm-eyes` (`adbm:adbm-eyes` when ADBM is a plugin) if the Agent tool lists it.
-Otherwise: Agent with `subagent_type: general-purpose`, `model: sonnet`, and as the prompt the content
-of `agents/adbm-eyes.md` of this skill without frontmatter. Append to the prompt:
+Otherwise: Agent with `subagent_type: general-purpose` and as the prompt the content
+of `agents/adbm-eyes.md` of this skill without frontmatter.
+
+In both cases model and effort come from the person's settings: run `adbm config` and take
+the `adbm-eyes` line. Pass its `model` and `effort` to the Agent tool; do not pass a value shown as `-`.
+The person sets them in `~/.config/adbm/config.ini` or the project's `.adbm/config.ini`.
+
+Append to the prompt:
 
 ```
 Task: <what was changed and what should come out>
