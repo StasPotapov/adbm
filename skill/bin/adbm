@@ -166,15 +166,27 @@ def current_run(create=True, slug="manual", new=False):
 
 def new_run(slug):
     base = runs_dir()
+    prev = current_run(create=False) or CACHE
     name = dt.datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + slugify(slug)
     p = os.path.join(base, name)
     os.makedirs(os.path.join(p, "logs"), exist_ok=True)
+    # что стоит на устройствах, не меняется от новой папки прогона
+    for f in (".as", "builds.json"):
+        if os.path.exists(os.path.join(prev, f)):
+            shutil.copy(os.path.join(prev, f), os.path.join(p, f))
     with open(os.path.join(base, ".current"), "w") as f:
         f.write(name)
     gi = os.path.join(base, ".gitignore")
     if not os.path.exists(gi):
         with open(gi, "w") as f:
             f.write("*\n")
+    return p
+
+
+def scratch():
+    """Папка для служебных файлов: текущий прогон, а вне прогона — кэш, без build/adbm в проекте."""
+    p = current_run(create=False) or CACHE
+    os.makedirs(os.path.join(p, "logs"), exist_ok=True)
     return p
 
 
@@ -204,10 +216,9 @@ def stats_add(run, **inc):
 
 def session_log(entry):
     """Журнал ручных действий — источник для save-flow."""
-    base = runs_dir()
-    os.makedirs(base, exist_ok=True)
-    entry = {"t": time.time(), **entry}
-    with _lock, open(os.path.join(base, "session.jsonl"), "a") as f:
+    os.makedirs(CACHE, exist_ok=True)
+    entry = {"t": time.time(), "project": project_root(), **entry}
+    with _lock, open(os.path.join(CACHE, "session.jsonl"), "a") as f:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
@@ -713,7 +724,8 @@ def cmd_install(a):
     if not os.path.exists(a.apk):
         die(f"нет файла {a.apk}")
     targets = pick(a, multi=True)
-    run = current_run(slug="manual")
+    run = current_run(create=False) or CACHE
+    os.makedirs(run, exist_ok=True)
     pkg = apk_package(a.apk)
     h = hashlib.sha1()
     with open(a.apk, "rb") as f:
@@ -751,8 +763,7 @@ def cmd_ui(a):
     xml, nodes = ui_snapshot(s, a.all)
     os.makedirs(CACHE, exist_ok=True)
     json.dump(nodes, open(os.path.join(CACHE, f"ui-{s}.json"), "w"), ensure_ascii=False)
-    run = current_run(slug="manual")
-    full = os.path.join(run, "logs", f"ui-api{api}-{int(time.time())}.xml")
+    full = os.path.join(scratch(), "logs", f"ui-api{api}-{int(time.time())}.xml")
     open(full, "w").write(xml)
     if a.find:
         nodes = find_nodes(nodes, a.find)
@@ -938,7 +949,7 @@ def cmd_look(a):
     from PIL import Image
     import io
     api, s = pick(a)[0]
-    run = current_run(slug="manual")
+    run = scratch()
     im = Image.open(io.BytesIO(screencap(s))).convert("RGB")
     W, H = im.size
     if a.crop:
@@ -960,7 +971,8 @@ def cmd_look(a):
     p = os.path.join(d, f"{n:03d}-api{api}.png")
     im.save(p, optimize=True)
     tok = -(-im.width // 28) * -(-im.height // 28)
-    stats_add(run, context_images=1, context_image_tokens=tok)
+    if run != CACHE:
+        stats_add(run, context_images=1, context_image_tokens=tok)
     print(f"{rel(p)}  {im.width}x{im.height} · {note} · scale={scale:.3f} (экранные = картинка / scale) · ~{tok} токенов")
     return 0
 
@@ -991,7 +1003,7 @@ def cmd_annotate(a):
     if not acli:
         die("нет Android CLI — `adbm setup --android-cli --yes`. Без него: `adbm ui` + `adbm tap \"текст\"`")
     api, s = pick(a)[0]
-    run = current_run(slug="manual")
+    run = scratch()
     d = os.path.join(run, "look")
     os.makedirs(d, exist_ok=True)
     raw = os.path.join(run, "logs", f"annotate-api{api}-{int(time.time())}.png")
@@ -1010,7 +1022,8 @@ def cmd_annotate(a):
     p = os.path.join(d, f"{n:03d}-api{api}-annotate.png")
     im.save(p, optimize=True)
     tok = -(-im.width // 28) * -(-im.height // 28)
-    stats_add(run, context_images=1, context_image_tokens=tok)
+    if run != CACHE:
+        stats_add(run, context_images=1, context_image_tokens=tok)
     print(f"{rel(p)}  540x{im.height} · ~{tok} токенов · тап: adbm tap --api {api} '#N'")
     return 0
 
@@ -1055,12 +1068,7 @@ def cmd_run(a):
         die(f"нет flow: {a.flow}")
     targets = pick(a, multi=True)
     slug = os.path.splitext(os.path.basename(flow))[0]
-    prev = current_run(create=False)
     run = new_run(slug) if a.new else current_run(slug=slug)
-    if a.new and prev:
-        for f in (".as", "builds.json"):
-            if os.path.exists(os.path.join(prev, f)):
-                shutil.copy(os.path.join(prev, f), os.path.join(run, f))
     version = default_as(run, a)
     cells, keys = parse_matrix(a.matrix)
     app = None
@@ -1354,10 +1362,13 @@ def cmd_record(a):
 # ---------------------------------------------------------------- save-flow
 
 def cmd_save_flow(a):
-    p = os.path.join(runs_dir(), "session.jsonl")
+    p = os.path.join(CACHE, "session.jsonl")
     if not os.path.exists(p):
         die("журнал пуст: ручных действий ещё не было")
-    ents = [json.loads(l) for l in open(p) if l.strip()]
+    root = project_root()
+    ents = [e for e in (json.loads(l) for l in open(p) if l.strip()) if e.get("project", root) == root]
+    if not ents:
+        die(f"в журнале нет действий для проекта {root}")
     api = a.api and parse_apis(a.api)[0]
     if not api:
         api = ents[-1].get("api")
