@@ -10,6 +10,7 @@ Serial по API даёт `adbm devices`. Serial эмулятора меняет�
 
 ```bash
 adb devices -l                       # список
+adb start-server                     # adb kill-server — остановить
 adb kill-server && adb start-server  # перезапуск сервера
 adb -s SERIAL tcpip 5555             # Wi-Fi: сначала по USB
 adb connect <ip>:5555
@@ -44,9 +45,11 @@ adb -s SERIAL uninstall <package>
 
 ```bash
 adb -s SERIAL shell input tap X Y
+adb -s SERIAL shell input tap X Y && sleep 0.1 && adb -s SERIAL shell input tap X Y   # двойной тап
 adb -s SERIAL shell input swipe X Y X Y 3000             # долгое нажатие
 adb -s SERIAL shell input swipe X1 Y1 X2 Y2 300
-adb -s SERIAL shell input keyevent KEYCODE_BACK          # HOME, ENTER, DEL, TAB, ESCAPE, APP_SWITCH
+adb -s SERIAL shell input keyevent KEYCODE_BACK          # HOME, ENTER, DEL, TAB, ESCAPE, MENU, APP_SWITCH
+adb -s SERIAL shell input keyevent KEYCODE_VOLUME_UP     # VOLUME_DOWN, POWER
 adb -s SERIAL shell input text "hello%sworld"            # только ASCII, пробел — %s
 ```
 
@@ -54,7 +57,19 @@ adb -s SERIAL shell input text "hello%sworld"            # только ASCII, �
 - во flow — Maestro `inputText`;
 - руками — ADB Keyboard, если он стоит:
   `ime set com.android.adbkeyboard/.AdbIME`, затем
-  `am broadcast -a ADB_INPUT_B64 --es msg "$(echo -n 'текст' | base64)"`.
+  `am broadcast -a ADB_INPUT_B64 --es msg "$(echo -n 'текст' | base64)"`;
+  очистить поле — `am broadcast -a ADB_CLEAR_TEXT`.
+
+Вернуться на главный экран: `adbm key home`. Если нужно пройти назад по стеку,
+жми «назад», пока в фокусе не окажется лаунчер:
+
+```bash
+HOME_PKG=$(adb -s SERIAL shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME | tail -1 | cut -d/ -f1)
+for i in $(seq 1 20); do
+  adb -s SERIAL shell dumpsys window | grep mCurrentFocus | grep -q "$HOME_PKG" && break
+  adb -s SERIAL shell input keyevent KEYCODE_BACK; sleep 0.5
+done
+```
 
 ## Кадры и дерево
 
