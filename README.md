@@ -2,13 +2,18 @@
 
 [Русский](README.ru.md)
 
-A Claude Code skill and the `adbm` CLI for visual checks of Android apps by an agent.
-The agent boots emulators for the API levels you need, installs "before" and "after" builds
-and runs one scenario on all API levels in parallel. The result is an HTML board and a
-"before | after" PNG contact sheet with a verdict.
+A Claude Code skill and the `adbm` CLI: an agent works with an Android device and emulators
+over adb and spends few tokens on it. The agent calls `adbm` commands instead of raw `adb`.
 
-The main goal is a small token budget. A 1080×2400 screenshot costs a model ~3350 tokens,
-so screenshots never enter the agent's context:
+- **Device control.** The agent launches and stops the app, navigates the screen,
+  types text (Cyrillic included), reads logcat, grants permissions, copies files.
+- **Several API levels at once.** The agent boots emulators for the Android versions you need,
+  installs the APK and runs a Maestro flow on all API levels in parallel, with a theme and navigation matrix.
+- **Screenshots and video.** The agent saves frames to the run folder, takes a downscaled frame or a crop, records video.
+- **Change checks.** The agent installs "before" and "after" builds and computes a pixel diff.
+  Then `adbm` builds an HTML board and a "before | after" PNG contact sheet, and a subagent writes the verdict.
+
+A 1080×2400 screenshot costs a model ~3350 tokens, so screenshots never enter the agent's context:
 
 - **the agent navigates by text** — `adbm ui` shrinks the UI tree 10–20×, `adbm tap "Close"`;
 - **"did it change" is computed in Python** — `adbm diff` reports percent and area, and element shifts for frames from `adbm shot`;
