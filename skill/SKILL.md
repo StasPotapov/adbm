@@ -135,10 +135,12 @@ Dark theme is not applied to the system UI on API 28, see `reference/api-matrix.
 `logs/ui-fail-*.txt` (the screen tree) and the reason line, not a screenshot.
 
 **Hangs and failures.** `adbm run` watches Maestro itself and prints its limits in the `watchdog:` line.
-- **Silence** (`--stall`) — the longest wait in the flow (`timeout:` of `extendedWaitUntil` and others)
-  plus 20 s, at least 45 s. Maestro prints a step only after it ends, so the limit
-  must be longer than the longest step.
-- **Cell** (`--timeout`) — 2 × the last successful run of this flow on this API level, at least 90 s.
+- **Silence** (`--stall`) — the longest wait in the flow and the flows it includes via `runFlow`
+  (`timeout:` of `extendedWaitUntil` and others) plus 20 s, at least 45 s. Maestro prints a step
+  only after it ends, so the limit must be longer than the longest step. Before Maestro's first
+  output line the limit is at least 120 s: JVM start and driver install print nothing.
+- **Cell** (`--timeout`) — 2 × the slowest last successful run of this flow among the chosen API levels,
+  at least 90 s.
   Without history — 600 s, a safety net: silence catches a hang earlier.
 - **Set your own limit** only if you know more than `adbm`. Example: a step without an explicit `timeout`
   waits for the network or a long data load — better add `timeout:` to that step in the flow.
@@ -212,7 +214,8 @@ If needed, open the board: `"$ADBM" board --open`.
 - `prep --locale` works on API 33+ and needs `--app <package>`. `adbm run` finds the package itself:
   from `builds.json` or the flow's `appId`. A `locale` cell without a package or below API 33 is skipped.
 - **Screenshot protection (`FLAG_SECURE`)** — common in banking apps and password managers. The frame
-  comes out empty (Maestro: `Screenshot returned null`) or black. `run` and `shot` warn about it.
+  comes out empty (Maestro: `Screenshot returned null`) or black. `run` drops empty frames, keeps black
+  ones as evidence and marks the cell failed; `shot` warns.
   Turn the protection off in the app as the first steps of the flow, or in a debug build.
 - `adbm` sees physical devices, but when API levels match it picks the emulator.
   Address a physical device with `--serial`.

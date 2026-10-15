@@ -58,7 +58,8 @@ must not differ: adbm turns on demo mode.
 
 ## Answer
 
-Append a section to `<run>/notes.md` (create the file if it does not exist):
+Append a section to `<run>/notes.md` (create the file if it does not exist). The board reads only
+the last `adbm-eyes` section, so a re-check replaces the old verdict:
 
 ```markdown
 ## adbm-eyes verdict

@@ -89,8 +89,9 @@ Fix the flow from these files. Do not open the failure screenshot if the tree an
 ## Screenshot protection
 
 If the app window has `FLAG_SECURE`, Maestro fails on some API levels with `Screenshot returned null`
-and silently returns a black frame on others. `adbm run` drops empty frames and marks a cell
-with black frames as failed, with a hint. The fix is to turn the protection off as the first steps of the flow:
+and silently returns a black frame on others. `adbm run` drops empty frames, keeps black ones
+and marks the cell as failed, with a hint. A frame counts as black when its middle part
+(without the system bars) is uniformly black: a dark theme with any visible text passes. The fix is to turn the protection off as the first steps of the flow:
 
 ```yaml
 # the app sets FLAG_SECURE by default

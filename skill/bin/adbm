@@ -12,6 +12,7 @@ Maestro for flows. ffmpeg for record.
 import argparse
 import concurrent.futures as cf
 import datetime as dt
+import functools
 import glob
 import hashlib
 import json
@@ -118,6 +119,7 @@ def parse_apis(s):
     return out
 
 
+@functools.lru_cache(maxsize=None)
 def project_root():
     if os.environ.get("ADBM_PROJECT"):
         return os.environ["ADBM_PROJECT"]
@@ -167,7 +169,7 @@ def current_run(create=True, slug="manual", new=False):
 
 def new_run(slug):
     base = runs_dir()
-    prev = current_run(create=False) or CACHE
+    prev = current_run(create=False) or project_cache()
     name = dt.datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + slugify(slug)
     p = os.path.join(base, name)
     os.makedirs(os.path.join(p, "logs"), exist_ok=True)
@@ -181,6 +183,13 @@ def new_run(slug):
     if not os.path.exists(gi):
         with open(gi, "w") as f:
             f.write("*\n")
+    return p
+
+
+def project_cache():
+    """Per-project cache: what is installed for this project when no run exists yet."""
+    p = os.path.join(CACHE, "projects", hashlib.sha1(project_root().encode()).hexdigest()[:12])
+    os.makedirs(p, exist_ok=True)
     return p
 
 
@@ -322,15 +331,29 @@ def screen_size(serial):
     return tuple(map(int, m[-1])) if m else (0, 0)
 
 
-def frame_problem(path):
-    """Empty or broken PNG → 'broken', almost solid black → 'black', else None."""
+def frame_problem(path, check_black=True):
+    """Empty or non-PNG file → 'broken', black content area → 'black', else None.
+
+    The broken check needs no Pillow. A FLAG_SECURE window gives an exactly uniform black
+    content area (system bars may still be drawn), so the black check looks only at the
+    middle of the frame and wants it nearly constant — a dark theme with any text passes.
+    """
     try:
-        if os.path.getsize(path) == 0:
-            return "broken"
-        from PIL import Image, ImageStat
+        with open(path, "rb") as f:
+            if f.read(8) != b"\x89PNG\r\n\x1a\n":
+                return "broken"
+    except OSError:
+        return "broken"
+    if not check_black:
+        return None
+    try:
+        from PIL import Image
         with Image.open(path) as im:
-            st = ImageStat.Stat(im.convert("L").resize((108, 240)))
-        return "black" if st.mean[0] < 3 and st.stddev[0] < 16 else None
+            w, h = im.size
+            lo, hi = im.convert("L").crop((0, int(h * .08), w, int(h * .88))).getextrema()
+        return "black" if hi <= 8 else None
+    except ImportError:
+        return None
     except Exception:
         return "broken"
 
@@ -755,8 +778,7 @@ def cmd_install(a):
     if not os.path.exists(a.apk):
         die(f"no such file {a.apk}")
     targets = pick(a, multi=True)
-    run = current_run(create=False) or CACHE
-    os.makedirs(run, exist_ok=True)
+    run = current_run(create=False) or project_cache()
     info = apk_info(a.apk)
     pkg = info["package"]
     low = [t for t in targets if info["min_sdk"] and t[0] < info["min_sdk"]]
@@ -1101,6 +1123,7 @@ def run_watched(cmd, stall, total):
     """
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
     lines, last = [], [time.time()]
+    startup = max(stall, 120)  # JVM start and driver install print nothing
 
     def reader():
         for raw in iter(p.stdout.readline, b""):
@@ -1113,32 +1136,51 @@ def run_watched(cmd, stall, total):
     while p.poll() is None:
         time.sleep(1)
         now = time.time()
-        if now - last[0] > stall:
+        if now - last[0] > (stall if lines else startup):
             reason = "stall"
         elif now - t0 > total:
             reason = "timeout"
         if reason:
-            # maestro is a shell wrapper around a JVM: kill the whole group, or java outlives the wrapper
-            for sig in (signal.SIGTERM, signal.SIGKILL):
-                try:
-                    os.killpg(p.pid, sig)
-                except ProcessLookupError:
-                    break
-                try:
-                    p.wait(5)
-                    break
-                except subprocess.TimeoutExpired:
-                    pass
+            # maestro is a shell wrapper around a JVM: kill the whole group, or java outlives the wrapper;
+            # the wrapper may exit on TERM while java lingers, so KILL the group after a grace period anyway
+            try:
+                os.killpg(p.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            try:
+                p.wait(5)
+            except subprocess.TimeoutExpired:
+                pass
+            time.sleep(1)
+            try:
+                os.killpg(p.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            p.wait()
             break
     th.join(5)
     return p.returncode, "".join(lines), reason
+
+
+def flow_timeouts(flow, seen=None):
+    """All `timeout:` values (ms) in a flow and in flows it includes via runFlow."""
+    seen = seen if seen is not None else set()
+    flow = os.path.abspath(flow)
+    if flow in seen or not os.path.exists(flow):
+        return []
+    seen.add(flow)
+    text = open(flow).read()
+    res = [int(x) for x in re.findall(r"^\s*timeout:\s*(\d+)", text, re.M)]
+    for inc in re.findall(r"^\s*-?\s*(?:runFlow|file):\s*['\"]?([^\s'\"{}]+\.ya?ml)", text, re.M):
+        res += flow_timeouts(os.path.join(os.path.dirname(flow), inc), seen)
+    return res
 
 
 def watch_limits(flow, api_list, stall, timeout):
     """Watchdog limits: from flags, otherwise from the flow and run history. Returns (stall, timeout, explanation)."""
     notes = []
     if stall is None:
-        waits = [int(x) for x in re.findall(r"^\s*timeout:\s*(\d+)", open(flow).read(), re.M)]
+        waits = flow_timeouts(flow)
         longest = max(waits) // 1000 if waits else 0
         stall = max(45, longest + 20)
         notes.append(f"silence {stall} s = longest wait in the flow {longest} s + 20, at least 45")
@@ -1221,7 +1263,7 @@ def cmd_run(a):
     def one(api, s):
         res = []
         if min_sdk and api < min_sdk:
-            return [({}, "skip", f"build {version} has minSdk {min_sdk}", 0)]
+            return [(cell, "skip", f"build {version} has minSdk {min_sdk}", 0) for cell in cells]
         for cell in cells:
             if cell.get("nav") == "gestural" and api < 29:
                 res.append((cell, "skip", f"no gestural on API {api}", 0))
@@ -1280,9 +1322,13 @@ def cmd_run(a):
                 if crash.strip():
                     why += " · crash in logs/crash-" + tag + ".txt"
                 res.append((cell, "fail", why, len(shots), log_p))
-            elif bad["black"]:
-                res.append((cell, "fail", f"black frames {len(bad['black'])} of {len(shots)} · " + SECURE_HINT,
-                            len(shots), log_p))
+            elif bad["broken"] or bad["black"]:
+                parts = []
+                if bad["broken"]:
+                    parts.append(f"empty frames dropped {len(bad['broken'])}: {', '.join(bad['broken'][:3])}")
+                if bad["black"]:
+                    parts.append(f"black frames {len(bad['black'])} of {len(shots)}")
+                res.append((cell, "fail", " · ".join(parts) + " · " + SECURE_HINT, len(shots), log_p))
             else:
                 save_duration(flow, api, time.time() - t0)
                 res.append((cell, "ok", f"{time.time() - t0:.0f} s", len(shots), log_p))
@@ -1327,7 +1373,7 @@ def scan_run(run):
         m = re.fullmatch(r"api(\d+)", parts[0])
         if not m:
             continue
-        if frame_problem(p) == "broken":
+        if frame_problem(p, check_black=False) == "broken":
             print(f"skipping broken frame: {os.path.relpath(p, run)}", file=sys.stderr)
             continue
         api = int(m.group(1))
@@ -1679,8 +1725,11 @@ def read_verdicts(run):
     if not os.path.exists(p):
         return worst, per_api, summary, ""
     text = open(p).read()
-    for line in text.splitlines():
-        sm = re.match(r"\s*\**summary\**:\s*(.+)", line, re.I)
+    # adbm-eyes appends a section per check: only the latest one counts
+    sections = re.split(r"(?m)^#+\s.*adbm-eyes.*$", text)
+    latest = sections[-1] if len(sections) > 1 else text
+    for line in latest.splitlines():
+        sm = re.match(r"\s*\**\s*summary\s*\**\s*:\s*\**\s*(.+)", line, re.I)
         if sm:
             summary = sm.group(1).strip()
             continue
