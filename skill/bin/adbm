@@ -31,7 +31,7 @@ import threading
 import time
 import xml.etree.ElementTree as ET
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 HERE = os.path.dirname(os.path.realpath(__file__))
 SKILL_DIR = os.path.dirname(HERE)
 VIEWER = os.path.join(SKILL_DIR, "viewer", "index.html")
@@ -511,7 +511,7 @@ def parse_nodes(xml, include_system=False):
     # Compose switches have no text: take the label from the nearest text in the same row
     texts = [n for n in nodes if n["text"]]
     for nd in nodes:
-        if "check" in nd["flags"] and not (nd["text"] or nd["desc"] or nd["id"]):
+        if "check" in nd["flags"] and not (nd["text"] or nd["desc"]):
             x0, y0, x1, y1 = nd["bounds"]
             row = [t for t in texts if y0 - 20 <= t["cy"] <= y1 + 20 and t["bounds"][0] < x1]
             if row:
@@ -1111,22 +1111,47 @@ def cmd_tap(a):
     return 1
 
 
+def node_label(n):
+    """What a person calls a node: a switch by its row (its own text may be just ON/OFF)."""
+    if "check" in n["flags"]:
+        return n["desc"] or n.get("near") or n["text"] or n["id"]
+    return n["text"] or n["desc"] or n["id"]
+
+
 def node_keys(nodes):
-    return [n["text"] or n["desc"] or n.get("near") or n["id"] for n in nodes if n["text"] or n["desc"] or n["id"]]
+    """Labels of the non-switch nodes: what appears and goes away."""
+    return [node_label(n) for n in nodes if "check" not in n["flags"] and node_label(n)]
+
+
+def switches(nodes):
+    """[(label, on)] of checkable nodes in screen order: compared by position, labels may repeat."""
+    return [(node_label(n), "on" in n["flags"]) for n in nodes if "check" in n["flags"]]
+
+
+def screen_print(nodes):
+    """A fingerprint of the screen for "did it change": labels and switch states."""
+    return node_keys(nodes), switches(nodes)
 
 
 def screen_change(before, after):
-    """'+3 "A", "B", "C"; -1 "D"' — texts that appeared and went away, or 'screen unchanged'."""
+    """'+3 "A", "B", "C"; -1 "D"; "Wi-Fi" off' — texts that appeared and went away, switches that
+    flipped, or 'screen unchanged'."""
     b, a = node_keys(before), node_keys(after)
     plus = [k for k in a if k not in b]
     minus = [k for k in b if k not in a]
-    if not plus and not minus:
+    sb, sa = switches(before), switches(after)
+    flipped = [f'"{trunc(lab, 30)}" {"on" if on else "off"}'
+               for (lab, on), (_, was) in zip(sa, sb) if on != was] if len(sa) == len(sb) else []
+    if not plus and not minus and not flipped:
         return "screen unchanged"
 
     def part(sign, ks):
         names = ", ".join(f'"{trunc(k, 30)}"' for k in ks[:4])
         return f"{sign}{len(ks)} {names}" + ("…" if len(ks) > 4 else "")
-    return "; ".join(part(sg, ks) for sg, ks in (("+", plus), ("-", minus)) if ks)
+    parts = [part(sg, ks) for sg, ks in (("+", plus), ("-", minus)) if ks]
+    if flipped:
+        parts.append(", ".join(flipped[:4]) + (f" (+{len(flipped) - 4} switches)" if len(flipped) > 4 else ""))
+    return "; ".join(parts)
 
 
 def wait_for(serial, sel, timeout, gone=False, before=None):
@@ -1142,7 +1167,7 @@ def wait_for(serial, sel, timeout, gone=False, before=None):
         try:
             _, nodes = ui_snapshot(serial)
             hit = find_nodes(nodes, sel)
-            changed = not stale or node_keys(nodes) != node_keys(before)
+            changed = not stale or screen_print(nodes) != screen_print(before)
             if bool(hit) != gone and changed:
                 return True, nodes, hit
         except SystemExit:

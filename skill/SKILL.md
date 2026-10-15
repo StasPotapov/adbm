@@ -31,6 +31,7 @@ omit the prefix: run `"$ADBM" <command>`, and set the variable in every Bash cal
 | logs, crash | `log` (the app's process), `log --crash`, `log --grep <re>` |
 | deep link, permission, file | `open <uri>`, `perm <pkg> grant CAMERA`, `push`, `pull` |
 | which devices, boot an emulator | `devices`, `devices --start 33,35`, `devices --stop 33` |
+| device theme, navigation mode, font scale | `prep --theme dark`, `--nav gestural`, `--font-scale 1.3` |
 | how it looks, before/after, several API levels, themes | "Visual check" below |
 
 A single action needs no `doctor`, `new`, `diff` or `board`. Only `new` and `run` start a run; outside one
@@ -41,7 +42,7 @@ Rare actions: `reference/adb.md`. `doctor` only if something does not start. Add
 
 A 1080×2400 image costs ~3350 tokens, a line of `adbm ui` ~15.
 
-1. **Navigate by text.** `ui`, then `tap "<text>"`. `tap` prints what appeared and went away;
+1. **Navigate by text.** `ui`, then `tap "<text>"`. `tap` prints what appeared, went away and switches that flipped;
    `--expect` confirms the next screen in one line. Do not call `ui` after every tap.
    A tap by `x,y` or `#N` prints no change — add `--expect`. `[N]` from `ui` works only on that screen.
 2. **Do not open frames.** `shot` and `run` save frames to the run, not to the context. Never `Read` a file
@@ -55,12 +56,11 @@ A 1080×2400 image costs ~3350 tokens, a line of `adbm ui` ~15.
 
 ## Visual check
 
-1. **Environment.** `doctor`. Rows marked `missing` that block the task — show them with the fix and
-   ask; `setup …` without `--yes` only prints the plan (`reference/setup.md`).
+1. **Environment.** `doctor`; `missing` rows that block the task — show the fix and ask; `setup` without `--yes` only plans.
 2. **API levels.** Find `minSdk`/`targetSdk` in `build.gradle*`. Default — API 35 only. For insets, navbar,
    theme, permissions, back navigation offer a set with reasons from `reference/api-matrix.md` and wait.
-3. **Run and builds.** `new <slug>`, then `install <before.apk> --as before --api …`. A device holds one
-   build at a time: all "before" frames first, then `install <after.apk>` and all "after" frames.
+3. **Run and builds.** `new <slug>`. Comparing builds: `install <before.apk> --as before --api …`, "before" frames,
+   then `install <after.apk>` and all "after" frames. One build as installed: frames only, `diff` says `after only`.
 4. **Frames.** By hand for 1–2 frames on 1–2 API levels: `prep`, `launch`, `tap`, `shot <name>`.
    A Maestro flow when the path is longer than 3–4 steps, for a theme/navigation/font matrix, for
    three API levels or when the check repeats: `flow new <slug>`, then `run .adbm/flows/<slug>.yaml --api 35`,
@@ -76,7 +76,7 @@ last `install` (the run's `.as` file); with no install — `after`.
 
 Use the agent type `adbm-eyes` (`adbm:adbm-eyes` when ADBM is a plugin) if the Agent tool lists it.
 Otherwise: Agent with `subagent_type: general-purpose`, `model: sonnet`, and as the prompt the content
-of `agents/adbm-eyes.md` without frontmatter. Append to the prompt:
+of `agents/adbm-eyes.md` of this skill without frontmatter. Append to the prompt:
 
 ```
 Task: <what was changed and what should come out>

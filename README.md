@@ -74,6 +74,15 @@ itself (`skill/hooks/hooks.json`). With the symlink install, add it to `~/.claud
 session spent on `adbm`: characters of output per command and images read.
 `adbm status` prints the same estimate for the current run from `stats.json`.
 
+## Tests
+
+```bash
+python3 -m unittest discover tests
+```
+
+No device is needed: the tests cover the UI tree parser, the matrix, the diff, verdicts, `save-flow`,
+the guard hook and the session measurement on fixtures from a real run. Without Pillow the image tests are skipped.
+
 ## Example
 
 ```bash

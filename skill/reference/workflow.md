@@ -31,6 +31,9 @@ When you need one or two frames on one or two API levels and the path to the scr
 "$ADBM" shot 1-sheet --api 35 --as before     # the frame goes to the run, not to the context
 ```
 
+`prep --theme` sets the system theme. An app may have its own theme setting on top of it: check
+which one the task is about.
+
 Other input: `type`, `clear-field`, `key back|home|enter|hide-keyboard`, `swipe up|down|x0,y0,x1,y1`,
 `tap --long|--double`, `tap "[N]"`, `rotate`. Switches without a label show as `near="<row text>"`:
 tap the row text. A screen without a tree (Canvas, a game): `annotate` and `tap '#N'` through Android CLI.

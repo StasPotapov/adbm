@@ -38,8 +38,9 @@ Do not wait silently: no result in a reasonable time — check `adbm devices` an
 If the app window has `FLAG_SECURE`, Maestro fails on some API levels with `Screenshot returned null`
 and returns a black frame on others. `run` drops empty frames, keeps black ones as evidence and marks
 the cell failed; `shot` warns. A frame counts as black when its middle part (without the system bars)
-is uniformly black: a dark theme with any visible text passes. Turn the protection off in the app as
-the first steps of the flow (`flows.md`, "Screenshot protection"), or use a debug build without it.
+is uniformly black: a dark theme with any visible text passes. Turn the protection off in the app:
+by hand — find its switch with `adbm ui --find` in the app's security settings and `tap` it;
+in a flow — as the first steps (`flows.md`, "Screenshot protection"); or use a debug build without it.
 
 ## Devices
 
