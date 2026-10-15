@@ -33,7 +33,7 @@ Then you do not need `doctor`, API selection, `new`, frames, `diff` or `board`.
 
 ```bash
 "$ADBM" devices                              # devices and their API levels
-"$ADBM" install app.apk --as after --api 35
+"$ADBM" install app.apk --api 35                   # --as after is the default
 "$ADBM" launch <package> --api 35
 "$ADBM" ui --api 35                          # what is on the screen, as text
 "$ADBM" tap --api 35 "Sign in"               # prints what appeared and went away on the screen
@@ -123,7 +123,8 @@ the serial changes between launches.
 "$ADBM" shot 1-sheet --api 35 --as before     # frame into the run, not into the context
 ```
 
-There are also `type` (ASCII), `key back|home|enter`, `swipe up|down`, `tap "[N]"` by number from `ui`.
+There are also `type`, `clear-field`, `key back|home|enter|hide-keyboard`, `swipe up|down|x0,y0,x1,y1`,
+`tap --long|--double`, `tap "[N]"` by number from `ui`, `rotate`, `open <deep link>`, `perm`, `log`.
 Switches without a label show as `near="<row text>"`: tap the row text.
 For a screen without a tree (Canvas, a game): `annotate` and `tap '#N'` through Android CLI.
 
@@ -142,6 +143,9 @@ Then write a Maestro flow following `reference/flows.md` and run it:
 ```
 
 Frame subfolders follow the axis order: `api35/before/gestural/dark/<frame>.png`.
+Axes outside `--matrix` take what `adbm prep` set by hand on that device, else the defaults:
+light theme, three-button navigation, font scale 1.0. `adbm prep --reset` restores the defaults
+and forgets the hand-set values. `prep` checks that the device took the setting and exits with 1 if not.
 Dark theme is not applied to the system UI on API 28, see `reference/api-matrix.md`.
 `run` drives all API levels in parallel and prints one line per cell. On failure read
 `logs/ui-fail-*.txt` (the screen tree) and the reason line, not a screenshot.
@@ -225,7 +229,10 @@ If needed, open the board: `"$ADBM" board --open`.
 
 ## Limitations
 
-- `adbm type` types ASCII only. Type non-Latin text in a flow with Maestro `inputText`.
+- **Non-Latin text** (Cyrillic and others): `input text` cannot type it; in a flow Maestro `inputText` can.
+  By hand, `adbm type --unicode "<text>"` installs ADB Keyboard (a third-party APK from GitHub), types,
+  then switches the keyboard back and removes the APK. **Before the first such call tell the person**
+  that a third-party APK will be installed and removed.
 - API 28 has no gesture navigation: `nav=gestural` cells are skipped.
 - `prep --locale` works on API 33+ and needs `--app <package>`. `adbm run` finds the package itself:
   from `builds.json` or the flow's `appId`. A `locale` cell without a package or below API 33 is skipped.

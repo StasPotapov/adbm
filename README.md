@@ -24,8 +24,11 @@ so screenshots never enter the agent's context:
 | `adbm devices --start 28,33,35` | boots emulators, prints API → serial → screen |
 | `adbm prep` | animations off, status bar demo mode, theme, navigation mode, font scale |
 | `adbm new <slug>`, `adbm status` | start a run folder, show the current run and counters |
-| `adbm install <apk> --as before\|after` | installs an APK on all API levels in parallel |
-| `adbm ui`, `tap`, `wait`, `assert`, `launch`, `type`, `key`, `swipe` | navigation by UI tree text; `tap` prints what changed on the screen, `--expect` waits for the next screen |
+| `adbm install <apk> [--as before\|after]` | installs an APK on all API levels in parallel (`after` by default) |
+| `adbm launch`, `stop`, `clear`, `uninstall`, `open <uri>`, `perm`, `log` | app control: launch, force-stop, data, deep link, permissions, logcat tail |
+| `adbm push`, `pull`, `rotate`, `devices --stop`, `clean` | files, orientation, stop emulators, delete old runs (keeps 5; without `--yes` only prints the plan) |
+| `adbm flow new <slug>` | a flow template in `.adbm/flows/` |
+| `adbm ui`, `tap`, `wait`, `assert`, `type`, `clear-field`, `key`, `swipe` | navigation by UI tree text; `tap` prints what changed on the screen, `--expect` waits for the next screen |
 | `adbm shot`, `look`, `thumb`, `annotate`, `record` | frames into the run folder, a downscaled frame or crop, video |
 | `adbm run <flow.yaml> --matrix …` | a Maestro flow on all API levels in parallel, theme and navigation matrix |
 | `adbm save-flow` | manual session → Maestro flow |

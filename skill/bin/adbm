@@ -298,6 +298,14 @@ def session_log(entry):
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
+def pil():
+    try:
+        from PIL import Image
+    except ImportError:
+        die("Pillow is missing — python3 -m pip install Pillow")
+    return Image
+
+
 # ---------------------------------------------------------------- devices
 
 def avd_index():
@@ -328,14 +336,32 @@ def read_ini(p):
     return cfg
 
 
+BAD_STATES = {
+    "offline": "adb reconnect, or adb kill-server; an emulator — adbm devices --stop N, then --start N",
+    "unauthorized": "accept the USB debugging prompt on the device, then adb kill-server && adb start-server",
+    "no permissions": "the USB device needs a udev rule (Linux)",
+}
+
+
+def state_hint(st):
+    """A hint for an adb device state such as 'offline' or 'no permissions (user … plugdev …)'."""
+    return BAD_STATES.get(st.split(" (")[0].split(":")[0].strip(), "see reference/adb.md")
+
+
+def adb_states():
+    """{serial: state} from `adb devices`, all states."""
+    _, out, _ = sh([adb_bin(), "devices"], timeout=15)
+    res = {}
+    for line in out.splitlines()[1:]:
+        parts = line.split(None, 1)
+        if len(parts) == 2:
+            res[parts[0]] = parts[1].strip()
+    return res
+
+
 def list_devices():
     """Connected devices in the device state."""
-    _, out, _ = sh([adb_bin(), "devices"], timeout=15)
-    serials = []
-    for line in out.splitlines()[1:]:
-        parts = line.split()
-        if len(parts) >= 2 and parts[1] == "device":
-            serials.append(parts[0])
+    serials = [s for s, st in adb_states().items() if st == "device"]
 
     def info(s):
         api = ashell(s, "getprop ro.build.version.sdk", timeout=15)
@@ -359,7 +385,9 @@ def pick(args, multi=False):
         return [(int(api) if api.isdigit() else 0, args.serial)]
     devs = list_devices()
     if not devs:
-        die("no devices connected — `adbm devices --start <API>`")
+        bad = {s: st for s, st in adb_states().items() if st != "device"}
+        die("no devices connected — `adbm devices --start <API>`" +
+            "".join(f"\n{s}: {st} — {state_hint(st)}" for s, st in bad.items()))
     apis = parse_apis(getattr(args, "api", None))
     if not apis:
         emus = [d for d in devs if d["emulator"]]
@@ -740,13 +768,24 @@ def wait_boot(avd, timeout=300):
             for d in list_devices():
                 if d["emulator"] and d["name"] == avd:
                     serial = d["serial"]
-        if serial and ashell(serial, "getprop sys.boot_completed", timeout=10) == "1":
+        # boot_completed comes before the package manager is ready: install and launch need pm
+        if serial and ashell(serial, "getprop sys.boot_completed", timeout=10) == "1" \
+                and ashell(serial, "pm path android", timeout=15).startswith("package:"):
             return serial
         time.sleep(3)
     return None
 
 
 def cmd_devices(a):
+    if a.stop:
+        want = parse_apis(a.stop)
+        devs = [d for d in list_devices() if d["emulator"] and d["api"] in want]
+        for d in devs:
+            code, out, err = adb(d["serial"], "emu", "kill", timeout=20)
+            print(f"API {d['api']}: " + (f"stopping {d['name']}" if code == 0 else f"error — {(out + err).strip()[:120]}"))
+        for api in sorted(set(want) - {d["api"] for d in devs}):
+            print(f"API {api}: no running emulator")
+        return 0 if devs else 1
     if a.start:
         want = parse_apis(a.start)
         devs = list_devices()
@@ -767,6 +806,9 @@ def cmd_devices(a):
                 for avd, s in zip(todo, ex.map(wait_boot, todo)):
                     print(f"{avd}: " + (f"booted → {s}" if s else f"did not boot in 5 min, log {CACHE}/emu-{avd}.log"))
     devs = list_devices()
+    bad = {s: st for s, st in adb_states().items() if st != "device"}
+    for s_, st in bad.items():
+        print(f"{s_}: {st} — {state_hint(st)}")
     if not devs:
         print("no devices")
         return 1
@@ -792,65 +834,125 @@ DEMO = [
 ]
 
 
+AXES = ("theme", "nav", "font_scale")
+DEFAULT_AXES = {"theme": "light", "nav": "threebutton", "font_scale": "1.0"}
+
+
+def device_axes(api, serial):
+    """Theme, navigation mode and font scale the device has now."""
+    out = ashell(serial, "cmd uimode night; settings get system font_scale; cmd overlay list 2>/dev/null | grep navbar",
+                 timeout=20)
+    theme = "dark" if re.search(r"Night mode: yes", out) else ("light" if "Night mode: no" in out else None)
+    m = re.search(r"\[x\] com\.android\.internal\.systemui\.navbar\.(\w+)", out)
+    fs = re.search(r"^(\d+(?:\.\d+)?)\s*$", out, re.M)
+    return {"theme": theme, "nav": m.group(1) if m else None, "font_scale": fs.group(1) if fs else None}
+
+
+def pinned_path(serial):
+    return os.path.join(CACHE, f"prep-{serial}.json")
+
+
+def load_pinned(api, serial):
+    """Axes set by hand with `adbm prep`: `adbm run` keeps them for cells without these axes."""
+    try:
+        d = json.load(open(pinned_path(serial)))
+        return d["axes"] if d.get("api") == api else {}
+    except Exception:
+        return {}
+
+
+def same_scale(a, b):
+    try:
+        return abs(float(a) - float(b)) < 1e-3
+    except (TypeError, ValueError):
+        return False
+
+
 def prep_device(api, serial, theme=None, nav=None, font_scale=None, locale=None, app=None, reset=False):
-    notes = []
+    """Set and check theme, navigation, font scale, locale; animations off, demo mode on.
+
+    Returns (ok, text). Only axes that differ from the device are changed: a navbar change restarts the system UI.
+    """
+    notes, errors = [], []
     if reset:
-        cmds = [f"settings put global {k} 1" for k in
-                ("window_animation_scale", "transition_animation_scale", "animator_duration_scale")]
-        cmds += ["am broadcast -a com.android.systemui.demo -e command exit",
-                 "settings put system font_scale 1.0"]
-        ashell(serial, "; ".join(c + " >/dev/null" for c in cmds))
-        return "reset: animations 1, demo mode off, font scale 1.0"
-    # theme and navbar changes restart the system UI and drop demo mode, so demo mode goes last
-    cmds = [f"settings put global {k} 0" for k in
-            ("window_animation_scale", "transition_animation_scale", "animator_duration_scale")]
-    cmds.append("settings put secure show_ime_with_hard_keyboard 0")
-    if theme:
+        theme, nav, font_scale = DEFAULT_AXES["theme"], DEFAULT_AXES["nav"], DEFAULT_AXES["font_scale"]
+    have = device_axes(api, serial)
+    cmds = []
+    if theme and have["theme"] != theme:
         cmds.append(f"cmd uimode night {'yes' if theme == 'dark' else 'no'}")
-    if font_scale:
+    if font_scale and not same_scale(have["font_scale"], font_scale):
         cmds.append(f"settings put system font_scale {font_scale}")
     if nav:
         if api < 29:
-            notes.append(f"nav={nav} skipped: API {api} < 29")
-        else:
+            if not reset:
+                notes.append(f"nav={nav} skipped: API {api} < 29")
+            nav = None
+        elif have["nav"] != nav:
             cmds.append(f"cmd overlay enable-exclusive --category com.android.internal.systemui.navbar.{nav}")
-    if locale:
+    if locale or (reset and app):
         if api >= 33 and app:
-            cmds.append(f"cmd locale set-app-locales {app} --locales {locale}")
-        else:
+            cmds.append(f"cmd locale set-app-locales {app}" + (f" --locales {locale}" if locale and not reset else ""))
+        elif not reset:
             notes.append("locale skipped: needs API 33+ and --app <package>")
+    scale = "1" if reset else "0"
+    cmds += [f"settings put global {k} {scale}" for k in
+             ("window_animation_scale", "transition_animation_scale", "animator_duration_scale")]
+    if not reset:
+        cmds.append("settings put secure show_ime_with_hard_keyboard 0")
     ashell(serial, "; ".join(c + " >/dev/null 2>&1" for c in cmds), timeout=60)
-    if nav and api >= 29:
+    if any("navbar" in c for c in cmds):
         time.sleep(3)
-    elif theme or font_scale:
+    elif any("uimode" in c or "font_scale" in c for c in cmds):
         time.sleep(1.5)
+    now = device_axes(api, serial)
+    if theme and now["theme"] != theme:
+        errors.append(f"theme is {now['theme']}, wanted {theme}")
+    if nav and now["nav"] != nav:
+        errors.append(f"nav is {now['nav']}, wanted {nav}")
+    if font_scale and not same_scale(now["font_scale"], font_scale):
+        errors.append(f"font scale is {now['font_scale']}, wanted {font_scale}")
     # after a theme change the status bar is recreated while demo mode still counts as on, so a
     # repeated enter is ignored (seen on API 28) — hence exit first
-    demo = "; ".join(c + " >/dev/null 2>&1" for c in
-                     ["am broadcast -a com.android.systemui.demo -e command exit"] + DEMO)
-    ashell(serial, demo, timeout=60)
-    s = "animations 0, demo mode"
-    s += f", theme {theme}" if theme else ""
-    s += f", nav {nav}" if nav and api >= 29 else ""
-    s += f", font scale {font_scale}" if font_scale else ""
-    s += f", locale {locale}" if locale and api >= 33 and app else ""
-    return s + ("; " + "; ".join(notes) if notes else "")
+    demo = ["am broadcast -a com.android.systemui.demo -e command exit"] + ([] if reset else DEMO)
+    ashell(serial, "; ".join(c + " >/dev/null 2>&1" for c in demo), timeout=60)
+    if reset:
+        s = "reset: animations 1, demo mode off, theme light, font scale 1.0" + (", nav threebutton" if api >= 29 else "")
+        s += ", app locale follows the system" if app and api >= 33 else ""
+    else:
+        s = "animations 0, demo mode"
+        s += f", theme {theme}" if theme else ""
+        s += f", nav {nav}" if nav else ""
+        s += f", font scale {font_scale}" if font_scale else ""
+        s += f", locale {locale}" if locale and api >= 33 and app else ""
+    if errors:
+        return False, "error — " + "; ".join(errors) + f" (after: {s})"
+    return True, s + ("; " + "; ".join(notes) if notes else "")
 
 
 def cmd_prep(a):
     targets = pick(a, multi=True)
     res = parallel(targets, lambda api, s: prep_device(api, s, a.theme, a.nav, a.font_scale, a.locale, a.app, a.reset))
-    for (api, s), r in zip(targets, res):
+    os.makedirs(CACHE, exist_ok=True)
+    for (api, s), (ok, _) in zip(targets, res):
+        if a.reset:
+            with contextlib.suppress(FileNotFoundError):
+                os.remove(pinned_path(s))
+        elif ok:
+            axes = {**load_pinned(api, s), **{k: getattr(a, k) for k in AXES if getattr(a, k)}}
+            json.dump({"api": api, "axes": axes}, open(pinned_path(s), "w"))
+    for (api, s), (ok, r) in zip(targets, res):
         print(f"{api}: {r}")
-    return 0
+    return 0 if all(ok for ok, _ in res) else 1
 
 
 def apk_info(apk):
     """{'package', 'min_sdk', 'target_sdk'} from aapt dump badging; missing ones are None."""
-    info = {"package": None, "min_sdk": None, "target_sdk": None}
+    info = {"package": None, "min_sdk": None, "target_sdk": None, "tool": None}
     root = sdk_root()
-    tools = sorted(glob.glob(os.path.join(root, "build-tools", "*", "aapt"))) if root else []
+    tools = sorted(glob.glob(os.path.join(root, "build-tools", "*", "aapt")),
+                   key=lambda t: [int(x) if x.isdigit() else 0 for x in re.split(r"[.-]", t.split(os.sep)[-2])]) if root else []
     if tools:
+        info["tool"] = tools[-1]
         _, out, _ = sh([tools[-1], "dump", "badging", apk], timeout=60)
         for key, rx in (("package", r"package: name='([^']+)'"), ("min_sdk", r"^sdkVersion:'(\d+)'"),
                         ("target_sdk", r"^targetSdkVersion:'(\d+)'")):
@@ -867,6 +969,8 @@ def cmd_install(a):
     run = current_run(create=False) or project_cache()
     info = apk_info(a.apk)
     pkg = info["package"]
+    if not info["tool"]:
+        print("minSdk unknown: no aapt in build-tools — minSdk is not checked")
     low = [t for t in targets if info["min_sdk"] and t[0] < info["min_sdk"]]
     for api, _ in low:
         print(f"{api}: skipped — the APK has minSdk {info['min_sdk']}")
@@ -885,18 +989,24 @@ def cmd_install(a):
         return ok, (out + err).strip().splitlines()[-1] if not ok else ""
 
     res = parallel(targets, one)
+    bad = 0
+    for (api, s), (ok, msg) in zip(targets, res):
+        print(f"{api}: " + ("installed" if ok else f"error — {msg}"))
+        bad += not ok
+    if bad == len(targets):
+        print(f"{a.as_}: nothing installed — builds.json is unchanged")
+        return 1
     meta_p = os.path.join(run, "builds.json")
     try:
         meta = json.load(open(meta_p))
     except Exception:
         meta = {}
+    other = meta.get("before" if a.as_ == "after" else "after", {}).get("package")
+    if pkg and other and other != pkg:
+        print(f"warning: package {pkg} differs from the other build ({other}) — before/after compare different apps")
     meta[a.as_] = {"apk": os.path.abspath(a.apk), "package": pkg, "sha1": sha,
                    "min_sdk": info["min_sdk"], "target_sdk": info["target_sdk"]}
     json.dump(meta, open(meta_p, "w"), ensure_ascii=False, indent=1)
-    bad = 0
-    for (api, s), (ok, msg) in zip(targets, res):
-        print(f"{api}: " + ("installed" if ok else f"error — {msg}"))
-        bad += not ok
     sdk = f" minSdk {info['min_sdk']} targetSdk {info['target_sdk']}" if info["min_sdk"] else ""
     print(f"{a.as_}: {os.path.basename(a.apk)} {pkg or ''}{sdk} sha1 {sha}")
     with _lock:
@@ -929,8 +1039,16 @@ def cmd_ui(a):
     return 0
 
 
-def tap_xy(serial, x, y):
-    adb(serial, "shell", f"input tap {x} {y}")
+def tap_xy(serial, x, y, how=""):
+    """Tap, long press (1 s) or double tap; True if adb succeeded."""
+    cmd = {"long": f"input swipe {x} {y} {x} {y} 1000",
+           # each `input` start takes ~0.3 s: two sequential taps are too far apart for a double tap
+           "double": f"(input tap {x} {y} &); sleep 0.1; input tap {x} {y}; sleep 0.3"}.get(how, f"input tap {x} {y}")
+    return adb_ok(serial, cmd)[0]
+
+
+def tap_how(a):
+    return "long" if getattr(a, "long", False) else ("double" if getattr(a, "double", False) else "")
 
 
 def cmd_tap(a):
@@ -938,8 +1056,9 @@ def cmd_tap(a):
     sel = a.selector
     if re.fullmatch(r"\d+,\d+", sel):
         x, y = map(int, sel.split(","))
-        tap_xy(s, x, y)
-        session_log({"api": api, "op": "tap_xy", "x": x, "y": y, "screen": screen_size(s)})
+        if not tap_xy(s, x, y, tap_how(a)):
+            die(f"[{s}] input tap failed")
+        session_log({"api": api, "op": "tap_xy", "x": x, "y": y, "screen": screen_size(s), "how": tap_how(a)})
         print(f"{api}: tap {x},{y}")
         return after_tap(api, s, a, None)
     if sel.startswith("#"):
@@ -956,8 +1075,9 @@ def cmd_tap(a):
         if not same:
             die(f"{fmt_node(nd, False)} is no longer on the screen — run adbm ui again")
         nd = same[0]
-        tap_xy(s, nd["cx"], nd["cy"])
-        session_log({"api": api, "op": "tap", "text": nd["text"], "desc": nd["desc"], "id": nd["id"]})
+        if not tap_xy(s, nd["cx"], nd["cy"], tap_how(a)):
+            die(f"[{s}] input tap failed")
+        session_log({"api": api, "op": "tap", "text": nd["text"], "desc": nd["desc"], "id": nd["id"], "how": tap_how(a)})
         print(f"{api}: tap {fmt_node(nd, False)}")
         return after_tap(api, s, a, nodes)
     scrolls = 0
@@ -974,10 +1094,11 @@ def cmd_tap(a):
             continue
         if hit:
             nd = hit[min(a.nth, len(hit) - 1)]
-            tap_xy(s, nd["cx"], nd["cy"])
+            if not tap_xy(s, nd["cx"], nd["cy"], tap_how(a)):
+                die(f"[{s}] input tap failed")
             key = "text" if nd["text"] == sel else ("desc" if nd["desc"] == sel else ("id" if nd["id"] == sel else "text"))
             session_log({"api": api, "op": "tap", "by": key, "sel": sel, "scrolled": scrolls,
-                         "text": nd["text"], "desc": nd["desc"], "id": nd["id"]})
+                         "text": nd["text"], "desc": nd["desc"], "id": nd["id"], "how": tap_how(a)})
             more = f" (matches {len(hit)}, took {min(a.nth, len(hit) - 1)})" if len(hit) > 1 else ""
             print(f"{api}: tap {fmt_node(nd, False)}{more}")
             return after_tap(api, s, a, nodes)
@@ -1114,33 +1235,54 @@ def cmd_launch(a):
         session_log({"api": api, "op": "launch", "package": a.package, "clear": bool(a.clear)})
         return f"started {act}" if "Status: ok" in out or "Complete" in out else f"error — {(out + err).strip()[-200:]}"
 
-    for (api, s), r in zip(targets, parallel(targets, one)):
+    res = parallel(targets, one)
+    for (api, s), r in zip(targets, res):
         print(f"{api}: {a.package} {r}")
-    return 0
+    return 1 if any(r.startswith("error") for r in res) else 0
 
 
 def cmd_type(a):
     api, s = pick(a)[0]
     if re.fullmatch(r"[\x20-\x7e]*", a.text):
-        adb(s, "shell", "input text " + shlex.quote(a.text.replace(" ", "%s")))
+        ok, out = adb_ok(s, "input text " + shlex.quote(a.text.replace(" ", "%s")))
+    elif not a.unicode:
+        die("non-ASCII text needs ADB Keyboard (github.com/senzhk/ADBKeyBoard): adbm installs it for this input, "
+            "switches the keyboard, types and removes it again. Tell the person first, then add --unicode")
     else:
-        die("input text handles ASCII only. For non-Latin text use Maestro inputText in a flow")
+        ok, out = type_unicode(api, s, a.text)
+    if not ok:
+        print(f"{api}: error — {trunc(out, 160)}")
+        return 1
     session_log({"api": api, "op": "type", "text": a.text})
-    print(f"{api}: typed {len(a.text)} characters")
+    print(f"{api}: typed {len(a.text)} characters" + (" via ADB Keyboard (installed and removed)" if a.unicode and
+                                                       not re.fullmatch(r"[\x20-\x7e]*", a.text) else ""))
     return 0
 
 
-KEYS = {"back": 4, "home": 3, "enter": 66, "menu": 82, "recents": 187, "escape": 111, "del": 67}
+KEYS = {"back": 4, "home": 3, "enter": 66, "menu": 82, "recents": 187, "escape": 111, "del": 67, "tab": 61,
+        "up": 19, "down": 20, "left": 21, "right": 22, "search": 84, "power": 26, "wake": 224, "sleep": 223,
+        "volume-up": 24, "volume-down": 25, "notifications": 83}
 
 
 def cmd_key(a):
     targets = pick(a, multi=True)
-    code = KEYS.get(a.key, a.key)
-    parallel(targets, lambda api, s: adb(s, "shell", f"input keyevent {code}"))
+    if a.key == "hide-keyboard":
+        def one(api, s):
+            shown = "mInputShown=true" in ashell(s, "dumpsys input_method | grep mInputShown", timeout=15)
+            return adb_ok(s, "input keyevent 4") if shown else (True, "")
+    else:
+        code = KEYS.get(a.key, a.key)
+        if not str(code).isdigit() and not str(code).startswith("KEYCODE_"):
+            die(f"unknown key {a.key}: {', '.join(KEYS)}, hide-keyboard, a number or KEYCODE_*")
+
+        def one(api, s):
+            return adb_ok(s, f"input keyevent {code}")
+    res = parallel(targets, one)
     for api, _ in targets:
         session_log({"api": api, "op": "key", "key": a.key})
-    print(f"{','.join(str(t[0]) for t in targets)}: {a.key}")
-    return 0
+    bad = [f"{api}: error — {trunc(out, 120)}" for (api, _), (ok, out) in zip(targets, res) if not ok]
+    print("\n".join(bad) or f"{','.join(str(t[0]) for t in targets)}: {a.key}")
+    return 1 if bad else 0
 
 
 def cmd_swipe(a):
@@ -1148,13 +1290,271 @@ def cmd_swipe(a):
     w, h = screen_size(s)
     d = {"up": (w // 2, int(h * .7), w // 2, int(h * .3)), "down": (w // 2, int(h * .3), w // 2, int(h * .7)),
          "left": (int(w * .8), h // 2, int(w * .2), h // 2), "right": (int(w * .2), h // 2, int(w * .8), h // 2)}
+    if re.fullmatch(r"\d+,\d+,\d+,\d+", a.direction):
+        d[a.direction] = tuple(map(int, a.direction.split(",")))
     if a.direction not in d:
-        die("direction: up, down, left, right")
+        die("direction: up, down, left, right, or x0,y0,x1,y1")
     x0, y0, x1, y1 = d[a.direction]
-    adb(s, "shell", f"input swipe {x0} {y0} {x1} {y1} {a.ms}")
-    session_log({"api": api, "op": "swipe", "direction": a.direction})
+    ok, out = adb_ok(s, f"input swipe {x0} {y0} {x1} {y1} {a.ms}")
+    if not ok:
+        print(f"{api}: error — {trunc(out, 160)}")
+        return 1
+    session_log({"api": api, "op": "swipe", "direction": a.direction, "points": [x0, y0, x1, y1], "screen": [w, h]})
     print(f"{api}: swipe {a.direction}")
     return 0
+
+
+# ---------------------------------------------------------------- commands: device and app
+
+def adb_ok(serial, cmd, timeout=60):
+    """A shell command on the device → (ok, output). adb passes the exit code through since Android 7."""
+    code, out, err = adb(serial, "shell", cmd, timeout=timeout)
+    return code == 0, (out + err).strip()
+
+
+def adb_error(out):
+    """The useful line of a failed shell command: the Java exception message, else the last line."""
+    m = re.search(r"Exception: (.+)", out)
+    lines = [l for l in out.splitlines() if l.strip()]
+    return trunc(m.group(1) if m else (lines[-1] if lines else "no answer"), 160)
+
+
+def default_package():
+    """The package of the installed build: the current run, else the project cache; "after" first."""
+    for base in (current_run(create=False), project_cache()):
+        try:
+            b = json.load(open(os.path.join(base, "builds.json")))
+        except Exception:
+            continue
+        for v in ("after", "before"):
+            if b.get(v, {}).get("package"):
+                return b[v]["package"]
+    return None
+
+
+def need_package(a):
+    pkg = getattr(a, "package", None) or default_package()
+    if not pkg:
+        die("pass the package: no adbm install in this project yet")
+    return pkg
+
+
+def cmd_log(a):
+    api, s = pick(a)[0]
+    n = a.n
+    if a.crash:
+        out = adb(s, "logcat", "-b", "crash", "-d", "-v", "brief", timeout=30)[1]
+        what = "crash buffer"
+    else:
+        cmd = ["logcat", "-d", "-v", "brief"]
+        what = "all"
+        pkg = None if a.all else (a.app or default_package())
+        if a.tag:
+            cmd += ["-s", f"{a.tag}:V"]
+            what = f"tag {a.tag}"
+        elif pkg:
+            pid = ashell(s, f"pidof {pkg}", timeout=10).split()
+            if pid:
+                cmd.append(f"--pid={pid[0]}")
+                what = f"{pkg} pid {pid[0]}"
+            else:
+                what = f"{pkg} is not running — lines that mention it"
+        # -t counts lines before -s/--grep filtering: take the whole buffer when filtering, cut the tail here
+        if not (a.tag or a.grep or pkg):
+            cmd += ["-t", str(n)]
+        out = adb(s, *cmd, timeout=30)[1]
+        if pkg and "mention" in what:
+            out = "\n".join(l for l in out.splitlines() if pkg in l)
+    lines = [l for l in out.splitlines() if l.strip() and not l.startswith("--------- beginning of")]
+    if a.grep:
+        rx = re.compile(a.grep, re.I)
+        lines = [l for l in lines if rx.search(l)]
+    lines = lines[-n:]
+    for l in lines:
+        print(trunc(l, 220))
+    print(f"# API {api} · {what} · {len(lines)} lines" + (f" · grep {a.grep}" if a.grep else ""))
+    return 0
+
+
+def cmd_open(a):
+    targets = pick(a, multi=True)
+
+    def one(api, s):
+        cmd = f"am start -W -a android.intent.action.VIEW -d {shlex.quote(a.uri)}"
+        if a.app:
+            cmd += f" {shlex.quote(a.app)}"
+        ok, out = adb_ok(s, cmd)
+        bad = not ok or re.search(r"Error|unable to resolve|No Activity", out)
+        if not bad:
+            session_log({"api": api, "op": "open", "uri": a.uri})
+        m = re.search(r"Activity: (\S+)", out)
+        return (False, out.splitlines()[-1] if out else "no answer") if bad else (True, m.group(1) if m else "started")
+
+    res = parallel(targets, one)
+    for (api, _), (ok, msg) in zip(targets, res):
+        print(f"{api}: " + (f"opened → {msg}" if ok else f"error — {msg}"))
+    return 0 if all(ok for ok, _ in res) else 1
+
+
+def full_perm(p):
+    return p if "." in p else "android.permission." + p.upper()
+
+
+def cmd_perm(a):
+    targets = pick(a, multi=True)
+    perms = [full_perm(p) for p in a.permissions]
+    if a.action in ("grant", "revoke") and not perms:
+        die("name the permissions: adbm perm <pkg> grant CAMERA POST_NOTIFICATIONS")
+
+    def one(api, s):
+        if a.action == "reset":
+            dump = ashell(s, f"dumpsys package {a.package}", timeout=30)
+            # runtime permissions only (install-time ones cannot be revoked), denied ones too: their user-fixed flag is what reset clears
+            runtime = "\n".join(re.findall(r"runtime permissions:\n((?:\s+\S+: granted=.*\n?)+)", dump))
+            names = perms or sorted(set(re.findall(r"([\w.]+\.permission\.[A-Z_]+): granted=", runtime)))
+            errs = []
+            for p in names:
+                if "granted=true" in next((l for l in runtime.splitlines() if p + ":" in l), "granted=true"):
+                    adb_ok(s, f"pm revoke {a.package} {p}")
+                ok, out = adb_ok(s, f"pm clear-permission-flags {a.package} {p} user-set user-fixed")
+                if not ok and "Unknown command" not in out:
+                    errs.append(f"{p.split('.')[-1]}: {adb_error(out)}")
+            return (not errs), f"reset {len(names)}" + (" · " + "; ".join(errs) if errs else "")
+        errs = []
+        for p in perms:
+            ok, out = adb_ok(s, f"pm {a.action} {a.package} {p}")
+            if not ok:
+                errs.append(f"{p.split('.')[-1]}: {adb_error(out)}")
+        return (not errs), (f"{a.action} {len(perms) - len(errs)} of {len(perms)}"
+                            + (" · " + "; ".join(errs) if errs else ""))
+
+    res = parallel(targets, one)
+    for (api, _), (ok, msg) in zip(targets, res):
+        print(f"{api}: {a.package} " + (msg if ok else f"error — {msg}"))
+    return 0 if all(ok for ok, _ in res) else 1
+
+
+def app_action(a, verb, cmd, check):
+    targets = pick(a, multi=True)
+    pkg = need_package(a)
+
+    def one(api, s):
+        if not ashell(s, f"pm path {shlex.quote(pkg)}", timeout=15).startswith("package:"):
+            return False, f"{pkg} is not installed"
+        ok, out = adb_ok(s, cmd.format(pkg=shlex.quote(pkg)), timeout=120)
+        ok = ok and (check is None or check in out)
+        if ok:
+            session_log({"api": api, "op": verb, "package": pkg})
+        return ok, out
+
+    res = parallel(targets, one)
+    for (api, _), (ok, out) in zip(targets, res):
+        print(f"{api}: {pkg} " + (verb if ok else f"error — {adb_error(out)}"))
+    return 0 if all(ok for ok, _ in res) else 1
+
+
+def cmd_stop(a):
+    return app_action(a, "stopped", "am force-stop {pkg}", None)
+
+
+def cmd_clear(a):
+    return app_action(a, "data cleared", "pm clear {pkg}", "Success")
+
+
+def cmd_uninstall(a):
+    return app_action(a, "uninstalled", "pm uninstall {pkg}", "Success")
+
+
+def cmd_push(a):
+    if not os.path.exists(a.local):
+        die(f"no such file {a.local}")
+    targets = pick(a, multi=True)
+    res = parallel(targets, lambda api, s: adb(s, "push", a.local, a.remote, timeout=300))
+    for (api, _), (code, out, err) in zip(targets, res):
+        print(f"{api}: " + (f"{a.local} → {a.remote}" if code == 0 else f"error — {(out + err).strip()[-160:]}"))
+    return 0 if all(r[0] == 0 for r in res) else 1
+
+
+def cmd_pull(a):
+    api, s = pick(a)[0]
+    dest = a.local or os.path.join(scratch(), "pull", os.path.basename(a.remote.rstrip("/")))
+    os.makedirs(os.path.dirname(os.path.abspath(dest)), exist_ok=True)
+    code, out, err = adb(s, "pull", a.remote, dest, timeout=300)
+    if code != 0:
+        print(f"{api}: error — {(out + err).strip()[-160:]}")
+        return 1
+    size = sum(os.path.getsize(os.path.join(d, f)) for d, _, fs in os.walk(dest) for f in fs) \
+        if os.path.isdir(dest) else os.path.getsize(dest)
+    print(f"{api}: {a.remote} → {rel(dest)} ({human_size(size)})")
+    return 0
+
+
+def cmd_rotate(a):
+    targets = pick(a, multi=True)
+    if a.to == "auto":
+        cmds = ["settings put system accelerometer_rotation 1"]
+    else:
+        cmds = ["settings put system accelerometer_rotation 0",
+                f"settings put system user_rotation {0 if a.to == 'portrait' else 1}"]
+    res = parallel(targets, lambda api, s: adb_ok(s, "; ".join(cmds)))
+    for (api, _), (ok, out) in zip(targets, res):
+        print(f"{api}: " + (f"rotation {a.to}" if ok else f"error — {trunc(out, 160)}"))
+    return 0 if all(ok for ok, _ in res) else 1
+
+
+def cmd_clear_field(a):
+    api, s = pick(a)[0]
+    _, nodes = ui_snapshot(s)
+    foc = next((n for n in nodes if "focus" in n["flags"]), None)
+    if not foc:
+        print(f"{api}: no focused field — tap the field first")
+        return 1
+    n = len(foc["text"]) + 1
+    # n × DEL and n × FORWARD_DEL clear the field wherever the cursor is, on every API level, unlike Ctrl+A
+    codes = ["67"] * n + ["112"] * n
+    ok, out = adb_ok(s, "; ".join("input keyevent " + " ".join(codes[i:i + 40]) for i in range(0, len(codes), 40)))
+    if ok:
+        session_log({"api": api, "op": "clear_field", "n": n})
+    print(f"{api}: " + (f'cleared {fmt_node(foc, False)}' if ok else f"error — {trunc(out, 160)}"))
+    return 0 if ok else 1
+
+
+ADBKBD_URL = "https://github.com/senzhk/ADBKeyBoard/releases/download/v2.5-dev/keyboardservice-debug.apk"
+ADBKBD_PKG = "com.android.adbkeyboard"
+ADBKBD_IME = "com.android.adbkeyboard/.AdbIME"
+
+
+def type_unicode(api, s, text):
+    """Type any text through ADB Keyboard: install it, switch the IME, type, switch back, uninstall."""
+    apk = os.path.join(CACHE, "adbkeyboard.apk")
+    if not os.path.exists(apk) and not ashell(s, f"pm path {ADBKBD_PKG}", timeout=15).startswith("package:"):
+        os.makedirs(CACHE, exist_ok=True)
+        code, _, err = sh(["curl", "-fsSL", "-o", apk, ADBKBD_URL], timeout=120)
+        if code != 0:
+            if os.path.exists(apk):
+                os.remove(apk)
+            die(f"ADB Keyboard download failed: {err.strip()[:160]}")
+    prev = ashell(s, "settings get secure default_input_method", timeout=10)
+    had = ashell(s, f"pm path {ADBKBD_PKG}", timeout=15).startswith("package:")
+    if not had:
+        code, out, err = adb(s, "install", "-r", "-t", apk, timeout=120)
+        if code != 0 or "Success" not in out:
+            die(f"ADB Keyboard install failed: {(out + err).strip()[-160:]}")
+    try:
+        adb_ok(s, f"ime enable {ADBKBD_IME}")
+        ok, out = adb_ok(s, f"ime set {ADBKBD_IME}")
+        if not ok:
+            die(f"cannot switch to ADB Keyboard: {trunc(out, 160)}")
+        time.sleep(0.5)
+        b64 = __import__("base64").b64encode(text.encode("utf-8")).decode()
+        ok, out = adb_ok(s, f"am broadcast -a ADB_INPUT_B64 --es msg {b64}")
+        time.sleep(0.3)
+    finally:
+        if prev and prev != "null":
+            adb_ok(s, f"ime set {shlex.quote(prev)}")
+        if not had:
+            adb(s, "uninstall", ADBKBD_PKG, timeout=60)
+    return ok and "result=0" in out, out
 
 
 # ---------------------------------------------------------------- commands: frames
@@ -1207,7 +1607,7 @@ def cmd_shot(a):
 
 
 def cmd_look(a):
-    from PIL import Image
+    Image = pil()
     import io
     api, s = pick(a)[0]
     run = scratch()
@@ -1306,14 +1706,15 @@ def annotate_tap(api, s, n, a):
     if code != 0 or not m:
         die(f"android screen resolve: {(out + err).strip()[-300:]}")
     x, y = map(int, m.groups())
-    tap_xy(s, x, y)
+    if not tap_xy(s, x, y, tap_how(a)):
+        die(f"[{s}] input tap failed")
     session_log({"api": api, "op": "tap_xy", "x": x, "y": y, "screen": screen_size(s), "note": f"annotate #{n}"})
     print(f"{api}: tap #{n} → {x},{y}")
     return after_tap(api, s, a, None)
 
 
 def cmd_annotate(a):
-    from PIL import Image
+    Image = pil()
     acli = shutil.which("android")
     if not acli:
         die("no Android CLI — `adbm setup --android-cli --yes`. Without it: `adbm ui` + `adbm tap \"text\"`")
@@ -1515,6 +1916,11 @@ def cmd_run(a):
         res = []
         if min_sdk and api < min_sdk:
             return [(cell, "skip", f"build {version} has minSdk {min_sdk}", 0) for cell in cells]
+        if app and not ashell(s, f"pm path {app}", timeout=15).startswith("package:"):
+            return [(cell, "fail", f"{app} is not installed on API {api} — adbm install <apk> --as {version} --api {api}",
+                     0, None) for cell in cells]
+        pinned = load_pinned(api, s)
+        applied = None
         for cell in cells:
             if cell.get("nav") == "gestural" and api < 29:
                 res.append((cell, "skip", f"no gestural on API {api}", 0))
@@ -1524,8 +1930,16 @@ def cmd_run(a):
                 continue
             group = cell_group(cell, keys, a.group or "")
             tag = f"api{api}" + ("-" + group.replace("/", "-") if group else "")
-            prep_device(api, s, cell.get("theme"), cell.get("nav"), cell.get("font_scale"),
-                        cell.get("locale"), app)
+            # axes outside the matrix: what `adbm prep` set by hand, else the defaults — never the previous cell
+            axes = {**DEFAULT_AXES, **pinned, **{k: v for k, v in cell.items() if k in AXES}}
+            want = (axes["theme"], axes["nav"], axes["font_scale"], cell.get("locale"))
+            if want != applied:
+                ok, why = prep_device(api, s, axes["theme"], axes["nav"], axes["font_scale"], cell.get("locale"), app)
+                if not ok:
+                    applied = None
+                    res.append((cell, "fail", f"prep: {why}", 0, None))
+                    continue
+                applied = want
             dest = os.path.join(run, f"api{api}", version, *([g for g in group.split("/") if g]))
             stale = [p for p in glob.glob(os.path.join(dest, "*.png"))]
             for p in stale:
@@ -1585,6 +1999,9 @@ def cmd_run(a):
             shutil.rmtree(out, ignore_errors=True)
         return res
 
+    flows_dir = os.path.join(project_root(), ".adbm", "flows")
+    if not flow.startswith(flows_dir + os.sep):
+        print(f"warning: the flow is outside {rel(flows_dir)}/ — keep it there to reuse it: adbm flow new <slug>")
     stall, timeout, why = watch_limits(flow, [t[0] for t in targets], a.stall, a.timeout)
     print(f"run {rel(run)} · {version} · {os.path.basename(flow)} · API {','.join(str(t[0]) for t in targets)}"
           + (f" · cells {len(cells)}" if len(cells) > 1 else ""))
@@ -1602,7 +2019,7 @@ def cmd_run(a):
                 print(f"{label}: skipped — {why}")
             else:
                 fails += 1
-                print(f"{label}: FAILED, frames {n} — {why} → {rel(r[4])}")
+                print(f"{label}: FAILED, frames {n} — {why}" + (f" → {rel(r[4])}" if r[4] else ""))
     stats_add(run, frames=total)
     print(f"total frames {total}" + (f", failures {fails}" if fails else "") + " · next: adbm diff, adbm board")
     return 1 if fails else 0
@@ -1649,6 +2066,7 @@ def frame_sort_key(k):
 # ---------------------------------------------------------------- diff
 
 def dhash(im, size=16):
+    pil()
     g = im.convert("L").resize((size + 1, size))
     px = g.tobytes()
     bits = 0
@@ -1692,14 +2110,6 @@ def ui_diff(bp, ap):
             out.append(f'"{trunc(k, 30)}" gone')
     out += [f'"{trunc(k, 30)}" appeared' for k in a if k not in b]
     return out
-
-
-def pil():
-    try:
-        from PIL import Image
-    except ImportError:
-        die("Pillow is missing — python3 -m pip install Pillow")
-    return Image
 
 
 def px_diff(b, a, mask_top):
@@ -1946,7 +2356,7 @@ def cmd_record(a):
         adb(s, "pull", "/sdcard/adbm-rec.mp4", base + ".mp4", timeout=120)
     finally:
         if a.slow:
-            prep_device(api, s)
+            prep_device(api, s, **load_pinned(api, s))
     if not os.path.exists(base + ".mp4") or os.path.getsize(base + ".mp4") < 1000:
         die("the video was not recorded (screenrecord may not work on this image)")
     sheet = base + "-sheet.png"
@@ -1999,11 +2409,21 @@ def cmd_save_flow(a):
             val = json.dumps(re.escape(sel[1]) if sel[0] == "text" else sel[1], ensure_ascii=False)
             if e.get("scrolled"):
                 out += ["- scrollUntilVisible:", "    element:", f"      {sel[0]}: {val}", "    direction: DOWN"]
-            out.append(f"- tapOn: {val}" if sel[0] == "text" else f"- tapOn:\n    id: {val}")
+            verb = {"long": "longPressOn", "double": "doubleTapOn"}.get(e.get("how") or "", "tapOn")
+            out.append(f"- {verb}: {val}" if sel[0] == "text" else f"- {verb}:\n    id: {val}")
         elif op == "tap_xy":
             w, h = e.get("screen") or (1, 1)
+            verb = {"long": "longPressOn", "double": "doubleTapOn"}.get(e.get("how") or "", "tapOn")
             out += ["# TODO: tap by coordinates — replace with a selector from adbm ui",
-                    "- tapOn:", f'    point: "{round(100 * e["x"] / w)}%,{round(100 * e["y"] / h)}%"']
+                    f"- {verb}:", f'    point: "{round(100 * e["x"] / w)}%,{round(100 * e["y"] / h)}%"']
+        elif op == "clear_field":
+            out.append(f"- eraseText: {e.get('n', 50)}")
+        elif op == "stopped":
+            out.append(f"- stopApp: {e['package']}")
+        elif op == "data cleared":
+            out.append(f"- clearState: {e['package']}")
+        elif op == "uninstalled":
+            out.append(f"# TODO: {e['package']} was uninstalled by hand — Maestro has no uninstall step")
         elif op == "type":
             out.append(f'- inputText: {json.dumps(e["text"], ensure_ascii=False)}')
         elif op == "key":
@@ -2011,8 +2431,15 @@ def cmd_save_flow(a):
             k = mk.get(e["key"])
             out.append("- back" if e["key"] == "back" else (f"- pressKey: {k}" if k else
                        f"# TODO: key {e['key']} has no Maestro pressKey equivalent"))
+        elif op == "swipe" and "," in e["direction"]:
+            w, h = e.get("screen") or (1, 1)
+            x0, y0, x1, y1 = e["points"]
+            out += ["- swipe:", f'    start: "{round(100 * x0 / w)}%,{round(100 * y0 / h)}%"',
+                    f'    end: "{round(100 * x1 / w)}%,{round(100 * y1 / h)}%"']
         elif op == "swipe":
             out += ["- swipe:", f'    direction: {e["direction"].upper()}']
+        elif op == "open":
+            out.append(f'- openLink: {json.dumps(e["uri"], ensure_ascii=False)}')
         elif op in ("wait", "assert"):
             sel = f"      {e.get('by', 'text')}: {json.dumps(e.get('value', ''), ensure_ascii=False)}"
             if op == "assert":
@@ -2029,6 +2456,62 @@ def cmd_save_flow(a):
         die(f"{rel(dest)} already exists — --force to overwrite")
     open(dest, "w").write("\n".join(out) + "\n")
     print(f"{rel(dest)}: steps {len(ents)}, frames {n} · check: adbm run {rel(dest)} --api {api}")
+    return 0
+
+
+FLOW_TEMPLATE = """appId: {app}
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "<text of the first screen>"
+    timeout: 15000
+# steps: selectors from `adbm ui`, waits instead of sleep, see reference/flows.md
+- tapOn: "<button>"
+- waitForAnimationToEnd
+- takeScreenshot: "1-<state>"
+"""
+
+
+def cmd_flow(a):
+    dest = os.path.join(project_root(), ".adbm", "flows", slugify(a.slug) + ".yaml")
+    if os.path.exists(dest) and not a.force:
+        die(f"{rel(dest)} already exists — --force to overwrite")
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    app = a.app or default_package() or "<app package>"
+    open(dest, "w").write(FLOW_TEMPLATE.format(app=app))
+    print(f"{rel(dest)}: template for {app} · fill the steps, then adbm run {rel(dest)} --api 35")
+    return 0
+
+
+def tree_size(p):
+    return sum(os.path.getsize(os.path.join(d, f)) for d, _, fs in os.walk(p) for f in fs)
+
+
+def cmd_clean(a):
+    base = runs_dir()
+    cur = current_run(create=False, mark=False)
+    runs = sorted((p for p in glob.glob(os.path.join(base, "*")) if os.path.isdir(p)), key=os.path.getmtime)
+    old = [p for p in runs[:-a.runs] if p != cur] if a.runs > 0 else [p for p in runs if p != cur]
+    todo = [(p, tree_size(p)) for p in old]
+    if a.cache:
+        for pat in ("look", "logs", "shots", "pull", "ui-*.json", "annotate-*.txt", "emu-*.log", "adbkeyboard.apk"):
+            todo += [(p, tree_size(p) if os.path.isdir(p) else os.path.getsize(p))
+                     for p in glob.glob(os.path.join(CACHE, pat))]
+    if not todo:
+        print(f"nothing to clean: {len(runs)} runs, keep {a.runs}")
+        return 0
+    total = sum(n for _, n in todo)
+    for p, n in todo[:10]:
+        print(("• " if a.yes else "plan: ") + f"{rel(p)} ({human_size(n)})")
+    if len(todo) > 10:
+        print(f"… {len(todo) - 10} more")
+    if not a.yes:
+        print(f"this is a plan: {len(todo)} items, {human_size(total)}. To delete: the same command with --yes")
+        return 0
+    for p, _ in todo:
+        shutil.rmtree(p) if os.path.isdir(p) else os.remove(p)
+    print(f"deleted {len(todo)} items, {human_size(total)}")
     return 0
 
 
@@ -2052,7 +2535,8 @@ def collage(frames, keys, apis, out, max_side=2000, verdicts=None):
     Picks the thumbnail width and the number of block columns so the image
     fits in max_side × max_side: with 20+ images in a request Claude downscales anything over 2000 px.
     """
-    from PIL import Image, ImageDraw
+    Image = pil()
+    from PIL import ImageDraw
     gap, hdr = 6, 26
     # frame aspect ratio
     sample = next(p for k in keys for api in frames[k] for p in frames[k][api].values())
@@ -2308,8 +2792,9 @@ def main():
     p.add_argument("--maestro", action="store_true")
     p.add_argument("--android-cli", action="store_true")
     p.add_argument("--yes", action="store_true", help="run the plan")
-    p = add("devices", cmd_devices, "list devices; --start boots AVDs for the given API levels")
+    p = add("devices", cmd_devices, "list devices; --start boots AVDs for the given API levels, --stop shuts them down")
     p.add_argument("--start", metavar="APIS")
+    p.add_argument("--stop", metavar="APIS")
     p.add_argument("--headless", action="store_true")
     p = add("prep", cmd_prep, "deterministic frames: animations off, demo mode, theme, navigation", "multi")
     p.add_argument("--theme", choices=("light", "dark"))
@@ -2320,7 +2805,7 @@ def main():
     p.add_argument("--reset", action="store_true")
     p = add("install", cmd_install, "install an APK on devices", "multi")
     p.add_argument("apk")
-    p.add_argument("--as", dest="as_", choices=VERSIONS, required=True)
+    p.add_argument("--as", dest="as_", choices=VERSIONS, default="after", help="default: after")
     p = add("new", cmd_new, "start a new run build/adbm/<date>-<slug>")
     p.add_argument("slug")
     p.add_argument("--as", dest="as_", choices=VERSIONS)
@@ -2346,17 +2831,60 @@ def main():
     p.add_argument("--expect", metavar="TEXT", help="after the tap wait for this text: one line ok / not found")
     p.add_argument("--timeout", type=float, default=5, help="for --expect, s")
     p.add_argument("--quiet", action="store_true", help="no screen diff after the tap")
+    p.add_argument("--long", action="store_true", help="long press, 1 s")
+    p.add_argument("--double", action="store_true", help="double tap")
     p = add("launch", cmd_launch, "launch an app", "multi")
     p.add_argument("package")
     p.add_argument("--clear", action="store_true", help="pm clear before launch")
     p.add_argument("--stop", action="store_true", help="force-stop before launch")
-    p = add("type", cmd_type, "type text (ASCII)", "one")
+    p = add("type", cmd_type, "type text into the focused field", "one")
     p.add_argument("text")
-    p = add("key", cmd_key, "key: back, home, enter, escape or a keycode", "multi")
+    p.add_argument("--unicode", action="store_true",
+                   help="non-ASCII: install ADB Keyboard for this input and remove it after — tell the person first")
+    p = add("clear-field", cmd_clear_field, "delete the text of the focused field", "one")
+    p = add("key", cmd_key, "key: back, home, enter, escape, tab, up/down/left/right, wake, sleep, power, "
+            "volume-up/down, notifications, hide-keyboard, or a keycode", "multi")
     p.add_argument("key")
-    p = add("swipe", cmd_swipe, "swipe up/down/left/right", "one")
+    p = add("rotate", cmd_rotate, "screen orientation", "multi")
+    p.add_argument("to", choices=("portrait", "landscape", "auto"))
+    p = add("swipe", cmd_swipe, "swipe up/down/left/right or x0,y0,x1,y1", "one")
     p.add_argument("direction")
     p.add_argument("--ms", type=int, default=300)
+    p = add("stop", cmd_stop, "force-stop an app (default: the installed build)", "multi")
+    p.add_argument("package", nargs="?")
+    p = add("clear", cmd_clear, "clear app data, pm clear (default: the installed build)", "multi")
+    p.add_argument("package", nargs="?")
+    p = add("uninstall", cmd_uninstall, "uninstall an app (default: the installed build)", "multi")
+    p.add_argument("package", nargs="?")
+    p = add("open", cmd_open, "open a deep link or URL: am start -a VIEW -d <uri>", "multi")
+    p.add_argument("uri")
+    p.add_argument("--app", help="package that must handle the link")
+    p = add("perm", cmd_perm, "runtime permissions: grant, revoke, reset", "multi")
+    p.add_argument("package")
+    p.add_argument("action", choices=("grant", "revoke", "reset"))
+    p.add_argument("permissions", nargs="*", help="CAMERA or android.permission.CAMERA; reset without names: all")
+    p = add("log", cmd_log, "logcat tail: the app's process by default, --crash, --tag, --grep", "one")
+    p.add_argument("-n", type=int, default=50, help="lines")
+    p.add_argument("--crash", action="store_true", help="crash buffer")
+    p.add_argument("--app", help="package (default: the installed build)")
+    p.add_argument("--tag")
+    p.add_argument("--grep", metavar="REGEX")
+    p.add_argument("--all", action="store_true", help="all processes")
+    p = add("push", cmd_push, "copy a file to the device", "multi")
+    p.add_argument("local")
+    p.add_argument("remote")
+    p = add("pull", cmd_pull, "copy a file from the device (default: <run>/pull/)", "one")
+    p.add_argument("remote")
+    p.add_argument("local", nargs="?")
+    p = add("flow", cmd_flow, "create a Maestro flow template in .adbm/flows/<slug>.yaml")
+    p.add_argument("new", choices=("new",))
+    p.add_argument("slug")
+    p.add_argument("--app")
+    p.add_argument("--force", action="store_true")
+    p = add("clean", cmd_clean, "delete old runs (and the cache with --cache); without --yes: plan only")
+    p.add_argument("--runs", type=int, default=5, help="runs to keep")
+    p.add_argument("--cache", action="store_true")
+    p.add_argument("--yes", action="store_true")
     p = add("annotate", cmd_annotate, "frame with numbered elements (Android CLI), 540 px", "one")
     p = add("look", cmd_look, "downscaled frame for the agent: 540 px, --small 360, --crop", "one")
     p.add_argument("--small", action="store_true")

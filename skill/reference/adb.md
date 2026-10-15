@@ -53,12 +53,8 @@ adb -s SERIAL shell input keyevent KEYCODE_VOLUME_UP     # VOLUME_DOWN, POWER
 adb -s SERIAL shell input text "hello%sworld"            # ASCII only, space is %s
 ```
 
-`input text` cannot type non-Latin text. Two ways around it:
-- in a flow — Maestro `inputText`;
-- by hand — ADB Keyboard, if installed:
-  `ime set com.android.adbkeyboard/.AdbIME`, then
-  `am broadcast -a ADB_INPUT_B64 --es msg "$(echo -n 'текст' | base64)"`;
-  clear the field — `am broadcast -a ADB_CLEAR_TEXT`.
+`input text` cannot type non-Latin text. In a flow use Maestro `inputText`, by hand —
+`adbm type --unicode` (see `SKILL.md`, "Limitations").
 
 Go to the home screen: `adbm key home`. To walk back through the stack,
 press back until the launcher has focus:

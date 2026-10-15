@@ -39,7 +39,8 @@ Command reference: https://docs.maestro.dev/api-reference/commands
   Do not put the API level, "before/after" or the matrix cell into the name: `adbm` sorts frames into folders.
 - **One flow — one check.** Themes and navigation come from `--matrix`, not from copies of the file.
 - **Scroll to an element** — `scrollUntilVisible`, then `tapOn`.
-- **Non-Latin text in a field** — `inputText: "Привет"`. `adbm type` handles ASCII only.
+- **Non-Latin text in a field** — `inputText: "Привет"` works: checked with Maestro 2.11.0 on API 28, 33
+  and 35 (the Maestro docs still say Android takes ASCII only). By hand outside a flow — `adbm type --unicode`.
 
 ## Template
 
@@ -69,7 +70,8 @@ Variables: `adbm run flow.yaml -e USER=test` → `${USER}` in the flow.
 
 ## From a manual session
 
-Every `adbm launch`, `tap`, `type`, `key`, `swipe`, `shot`, `wait`, `assert` is logged to `~/.cache/adbm/session.jsonl`
+Every successful `adbm launch`, `tap`, `type`, `clear-field`, `key`, `swipe`, `open`, `stop`, `clear`,
+`shot`, `wait`, `assert` is logged to `~/.cache/adbm/session.jsonl`
 together with the project path. `adbm save-flow <slug> --api 35` builds a flow from the last `launch`
 of the current project:
 - `launch --clear` becomes `clearState: true`, without `--clear` — `false`;
@@ -78,7 +80,10 @@ of the current project:
 - a tap by coordinates becomes a `point` in percent marked `TODO`;
 - `wait` and `tap --expect` become `extendedWaitUntil` (`visible`, or `notVisible` for `wait --gone`)
   with the same timeout, at least 5 s; `assert` becomes `assertVisible`. A match by id gives `id:`,
-  a substring match gives `.*text.*`.
+  a substring match gives `.*text.*`;
+- `tap --long` / `--double` become `longPressOn` / `doubleTapOn`; `swipe x0,y0,x1,y1` becomes
+  `swipe` with `start`/`end` in percent; `open` becomes `openLink`; `clear-field` becomes `eraseText`;
+  `stop` becomes `stopApp`, `clear` becomes `clearState`; `uninstall` becomes a `TODO` comment.
 
 After `save-flow` run the flow once and fix the selectors.
 
