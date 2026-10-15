@@ -33,9 +33,21 @@ Claude Code skill и CLI `adbm`: агент работает с Android-устр
 Это борд реального прогона: в приложении сменили тему по умолчанию, и проверка нашла нечитаемый
 статус-бар. Разбор по шагам, со строками диффа и кропами, — в [docs/example.ru.md](docs/example.ru.md).
 
+## На чём построен
+
+ADBM не заменяет эти инструменты, а связывает их и экономит токены агента.
+
+| Инструмент | Что делает в ADBM |
+|---|---|
+| [Maestro](https://github.com/mobile-dev-inc/Maestro) — открытый фреймворк UI-тестов от mobile.dev, Apache 2.0 | выполняет сценарии: `adbm run` гоняет flow на всех API, `adbm save-flow` пишет flow из ручной сессии, `adbm type` вводит через него не-ASCII текст. Синтаксис flow — [документация Maestro](https://docs.maestro.dev) |
+| [Android SDK](https://developer.android.com/tools): adb, emulator, sdkmanager, avdmanager | связь с устройством, эмуляторы, скачивание образов |
+| [Pillow](https://python-pillow.github.io) | пиксельный дифф, кропы, коллаж |
+| [ffmpeg](https://ffmpeg.org) | кадры из видео для `adbm record` |
+| [Android CLI](https://developer.android.com/tools/agents/android-cli), по желанию | только `adbm annotate`: номера элементов на экране без дерева UI |
+
 ## Установка
 
-Нужны Android SDK, Python 3.9+ с Pillow, для сценариев и ввода не-ASCII через `adbm type` — Maestro, для видео — ffmpeg.
+Нужны Android SDK, Python 3.9+ с Pillow, для сценариев и ввода не-ASCII через `adbm type` — [Maestro](https://github.com/mobile-dev-inc/Maestro), для видео — ffmpeg.
 
 ```bash
 git clone <repo> ~/dev/adbm

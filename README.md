@@ -33,9 +33,21 @@ A 1080×2400 screenshot costs a model ~3350 tokens, so screenshots never enter t
 This is the board of a real run: the app's default theme changed, and the check found an unreadable
 status bar. A step-by-step walkthrough with diff lines and crops is in [docs/example.md](docs/example.md).
 
+## Built on
+
+ADBM does not replace these tools: it ties them together and saves the agent's tokens.
+
+| Tool | What it does in ADBM |
+|---|---|
+| [Maestro](https://github.com/mobile-dev-inc/Maestro) — an open-source UI testing framework by mobile.dev, Apache 2.0 | runs scenarios: `adbm run` runs a flow on all API levels, `adbm save-flow` writes a flow from a manual session, `adbm type` types non-ASCII text through it. Flow syntax: [Maestro docs](https://docs.maestro.dev) |
+| [Android SDK](https://developer.android.com/tools): adb, emulator, sdkmanager, avdmanager | device connection, emulators, image downloads |
+| [Pillow](https://python-pillow.github.io) | pixel diff, crops, contact sheet |
+| [ffmpeg](https://ffmpeg.org) | frames from video for `adbm record` |
+| [Android CLI](https://developer.android.com/tools/agents/android-cli), optional | only `adbm annotate`: numbered elements on a screen without a UI tree |
+
 ## Install
 
-Requires the Android SDK and Python 3.9+ with Pillow. Scenarios and non-ASCII `adbm type` need Maestro, video needs ffmpeg.
+Requires the Android SDK and Python 3.9+ with Pillow. Scenarios and non-ASCII `adbm type` need [Maestro](https://github.com/mobile-dev-inc/Maestro), video needs ffmpeg.
 
 ```bash
 git clone <repo> ~/dev/adbm
