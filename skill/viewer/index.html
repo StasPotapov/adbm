@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADBM борд</title>
+<script src="manifest.js"></script>
+<style>
+:root {
+  --bg: #f6f6f4; --panel: #ffffff; --ink: #1d1d1f; --muted: #6b6b70; --line: #e2e2de;
+  --accent: #2f6fdb; --pass: #1f8a4c; --fail: #c8372d; --same: #8a8a90; --chip: #ececea;
+  --shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.05);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141416; --panel: #1d1d20; --ink: #ececef; --muted: #9a9aa2; --line: #2e2e33;
+    --accent: #6d9cf0; --pass: #4cc27e; --fail: #f0766c; --same: #77777f; --chip: #2a2a2f;
+    --shadow: 0 1px 2px rgba(0,0,0,.4);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #141416; --panel: #1d1d20; --ink: #ececef; --muted: #9a9aa2; --line: #2e2e33;
+  --accent: #6d9cf0; --pass: #4cc27e; --fail: #f0766c; --same: #77777f; --chip: #2a2a2f;
+  --shadow: 0 1px 2px rgba(0,0,0,.4);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+header { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line);
+  padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
+h1 { font-size: 16px; margin: 0; font-weight: 600; }
+h1 small { color: var(--muted); font-weight: 400; margin-left: 6px; }
+.filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.chip { border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 999px;
+  padding: 3px 10px; cursor: pointer; font: inherit; font-size: 13px; }
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+select, input[type=search] { font: inherit; font-size: 13px; padding: 3px 8px; border-radius: 6px;
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
+.spacer { flex: 1; }
+main { padding: 16px; max-width: 1800px; margin: 0 auto; }
+.top { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 16px; margin-bottom: 16px; }
+@media (max-width: 800px) { .top { grid-template-columns: 1fr; } }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; box-shadow: var(--shadow); }
+.card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 8px; }
+.notes { white-space: pre-wrap; font-size: 13px; max-height: 320px; overflow: auto; }
+.notes .pass { color: var(--pass); font-weight: 600; } .notes .fail { color: var(--fail); font-weight: 600; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; font-size: 13px; }
+.kv dt { color: var(--muted); } .kv dd { margin: 0; overflow-wrap: anywhere; }
+.summary a { color: var(--accent); }
+.row { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 12px; box-shadow: var(--shadow); }
+.row-head { display: flex; gap: 8px; align-items: baseline; padding: 8px 12px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.row-head b { font-weight: 600; } .row-head .grp { color: var(--muted); }
+.badge { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 4px; color: #fff; }
+.badge.PASS { background: var(--pass); } .badge.FAIL { background: var(--fail); }
+.cells { display: flex; gap: 14px; padding: 10px 12px; overflow-x: auto; }
+.cell { flex: 0 0 auto; }
+.cell-head { font-size: 12px; color: var(--muted); margin-bottom: 4px; display: flex; gap: 8px; }
+.cell-head .pct { margin-left: auto; } .pct.chg { color: var(--fail); } .pct.same { color: var(--same); }
+.pair { display: flex; gap: 3px; cursor: zoom-in; }
+.pair figure { margin: 0; text-align: center; }
+.pair img, .pair .none { width: var(--thumb, 150px); display: block; border-radius: 4px; background: var(--chip); }
+.pair .none { aspect-ratio: 9/20; display: grid; place-items: center; color: var(--muted); font-size: 12px; }
+.pair figcaption { font-size: 11px; color: var(--muted); }
+.ui { font-size: 11px; color: var(--muted); max-width: calc(var(--thumb, 150px) * 2); margin-top: 4px; }
+.empty { color: var(--muted); padding: 40px; text-align: center; }
+dialog { border: 0; padding: 0; background: var(--bg); color: var(--ink); width: 100vw; height: 100vh;
+  max-width: 100vw; max-height: 100vh; }
+dialog::backdrop { background: rgba(0,0,0,.6); }
+.dlg-head { display: flex; gap: 10px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.dlg-body { height: calc(100vh - 56px); display: flex; justify-content: center; align-items: flex-start; gap: 12px; padding: 12px; overflow: auto; }
+.dlg-body img { max-height: calc(100vh - 100px); max-width: 100%; border-radius: 6px; }
+.side figure { margin: 0; text-align: center; } .side figcaption { color: var(--muted); font-size: 12px; }
+.slider { position: relative; display: inline-block; }
+.slider img { display: block; }
+.slider .over { position: absolute; inset: 0; overflow: hidden; }
+.slider .over img { max-width: none; }
+.slider input { position: absolute; left: 0; right: 0; bottom: -28px; width: 100%; }
+.slider .bar { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--accent); pointer-events: none; }
+@media (max-width: 600px) { .pair img, .pair .none { width: 110px; } header { padding: 10px 16px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>ADBM <small id="run"></small></h1>
+  <div class="filters" id="apis" aria-label="API"></div>
+  <span class="filters" id="groups"></span>
+  <input type="search" id="q" placeholder="кадр…" aria-label="Поиск по имени кадра">
+  <button class="chip" id="onlyChanged" aria-pressed="false">только изменённые</button>
+  <span class="spacer"></span>
+  <label style="font-size:13px;color:var(--muted)">размер <input type="range" id="size" min="90" max="320" value="150"></label>
+  <button class="chip" id="theme" title="Тема">◐</button>
+</header>
+<main>
+  <section class="top">
+    <div class="card"><h2>Заметки и вердикт</h2><div class="notes" id="notes"></div></div>
+    <div class="card"><h2>Прогон</h2><dl class="kv" id="meta"></dl><div class="summary" id="summary" style="margin-top:8px"></div></div>
+  </section>
+  <section id="rows"></section>
+</main>
+<dialog id="dlg">
+  <div class="dlg-head">
+    <b id="dlgTitle"></b>
+    <div class="filters" id="modes"></div>
+    <span class="spacer"></span>
+    <span style="color:var(--muted);font-size:12px">← → соседний кадр · Esc закрыть</span>
+    <button class="chip" id="close">закрыть</button>
+  </div>
+  <div class="dlg-body" id="dlgBody"></div>
+</dialog>
+<script>
+(function () {
+  const M = window.MANIFEST;
+  const $ = (s) => document.querySelector(s);
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  if (!M) { $("#rows").innerHTML = '<div class="empty">manifest.js не найден — запусти <code>adbm board</code></div>'; return; }
+
+  try { const t = localStorage.getItem("adbm-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+  $("#theme").onclick = () => {
+    const dark = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim() === "#141416";
+    const t = dark ? "light" : "dark";
+    document.documentElement.dataset.theme = t;
+    try { localStorage.setItem("adbm-theme", t); } catch (e) {}
+  };
+
+  $("#run").textContent = M.run;
+  document.title = "ADBM · " + M.run;
+  const meta = [["API", M.apis.join(", ")], ["пар", M.items.length]];
+  for (const [k, v] of Object.entries(M.builds || {})) meta.push([k === "before" ? "до" : "после", (v.package || "") + " · " + (v.apk || "").split("/").pop() + " · " + v.sha1]);
+  const st = M.stats || {};
+  if (st.frames != null) meta.push(["кадров снято", st.frames]);
+  meta.push(["картинок в контекст", (st.context_images || 0) + (st.context_image_tokens ? " (~" + st.context_image_tokens + " ток.)" : "")]);
+  meta.push(["собран", M.created.replace("T", " ")]);
+  $("#meta").innerHTML = meta.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("");
+  $("#summary").innerHTML = (M.summary || []).map((p) => `<a href="${esc(p)}" target="_blank">${esc(p)}</a>`).join("<br>");
+  $("#notes").innerHTML = M.notes ? esc(M.notes).replace(/\b(PASS)\b/g, '<span class="pass">$1</span>').replace(/\b(FAIL)\b/g, '<span class="fail">$1</span>')
+    : '<span style="color:var(--muted)">notes.md пока нет — вердикт пишет субагент adbm-eyes</span>';
+
+  const apiOn = new Set(M.apis);
+  $("#apis").innerHTML = M.apis.map((a) => `<button class="chip" data-api="${a}" aria-pressed="true">API ${a}</button>`).join("");
+  $("#apis").onclick = (e) => {
+    const b = e.target.closest("[data-api]"); if (!b) return;
+    const a = +b.dataset.api; apiOn.has(a) ? apiOn.delete(a) : apiOn.add(a);
+    b.setAttribute("aria-pressed", apiOn.has(a)); render();
+  };
+  // группа «gestural/dark» → отдельный список на каждый уровень: навигация, тема, …
+  const levels = [];
+  for (const g of M.groups) g.split("/").forEach((v, i) => { if (v) (levels[i] = levels[i] || new Set()).add(v); });
+  $("#groups").innerHTML = levels.map((vals, i) => `<select data-level="${i}" aria-label="Уровень группы ${i + 1}"><option value="*">все</option>` +
+    [...vals].sort().map((v) => `<option>${esc(v)}</option>`).join("") + "</select>").join("");
+  $("#groups").onchange = render; $("#q").oninput = render;
+  const groupOk = (g) => {
+    const parts = g.split("/");
+    return [...document.querySelectorAll("#groups select")].every((sel) => sel.value === "*" || parts[+sel.dataset.level] === sel.value);
+  };
+  $("#onlyChanged").onclick = (e) => { const b = e.currentTarget; b.setAttribute("aria-pressed", b.getAttribute("aria-pressed") !== "true"); render(); };
+  if (!M.items.some((i) => i.pct != null)) $("#onlyChanged").style.display = "none";
+  $("#size").oninput = (e) => document.documentElement.style.setProperty("--thumb", e.target.value + "px");
+
+  const keyOf = (i) => i.group + "\u0000" + i.name;
+  const rows = [];
+  for (const it of M.items) {
+    let r = rows.find((r) => r.key === keyOf(it));
+    if (!r) rows.push(r = { key: keyOf(it), group: it.group, name: it.name, items: [], verdict: it.verdict });
+    r.items.push(it);
+  }
+  let visible = [];
+
+  function render() {
+    const q = $("#q").value.toLowerCase(), only = $("#onlyChanged").getAttribute("aria-pressed") === "true";
+    visible = [];
+    const html = rows.filter((r) => groupOk(r.group) && (!q || r.name.toLowerCase().includes(q) || r.group.toLowerCase().includes(q)))
+      .map((r) => {
+        const its = r.items.filter((i) => apiOn.has(i.api) && (!only || i.same === false));
+        if (!its.length) return "";
+        const cells = its.map((i) => {
+          const idx = visible.push(i) - 1;
+          const pct = i.pct == null ? "" : i.same ? '<span class="pct same">без изменений</span>' : `<span class="pct chg">${i.pct}%</span>`;
+          const fig = (src, cap) => src ? `<figure><img loading="lazy" src="${esc(src)}" alt="${cap}"><figcaption>${cap}</figcaption></figure>`
+            : `<figure><div class="none">нет</div><figcaption>${cap}</figcaption></figure>`;
+          const pair = (i.before || !i.after ? fig(i.before, "до") : "") + fig(i.after, "после");
+          const ui = i.ui && i.ui.length ? `<div class="ui">${esc(i.ui.slice(0, 4).join(" · "))}</div>` : "";
+          return `<div class="cell"><div class="cell-head"><span>API ${i.api}</span>${pct}</div><div class="pair" data-i="${idx}">${pair}</div>${ui}</div>`;
+        }).join("");
+        const badge = r.verdict ? `<span class="badge ${r.verdict}">${r.verdict}</span>` : "";
+        return `<div class="row"><div class="row-head">${badge}<b>${esc(r.name)}</b><span class="grp">${esc(r.group)}</span></div><div class="cells">${cells}</div></div>`;
+      }).join("");
+    $("#rows").innerHTML = html || '<div class="empty">ничего не подходит под фильтр</div>';
+  }
+  render();
+
+  let cur = 0, mode = "side";
+  const dlg = $("#dlg");
+  $("#rows").onclick = (e) => { const p = e.target.closest(".pair"); if (!p) return; cur = +p.dataset.i; open(); };
+  $("#close").onclick = () => dlg.close();
+  $("#modes").onclick = (e) => { const b = e.target.closest("[data-mode]"); if (b) { mode = b.dataset.mode; open(); } };
+  document.addEventListener("keydown", (e) => {
+    if (!dlg.open) return;
+    if (e.key === "ArrowRight" && cur < visible.length - 1) { cur++; open(); }
+    if (e.key === "ArrowLeft" && cur > 0) { cur--; open(); }
+  });
+
+  function open() {
+    const i = visible[cur];
+    const modes = [["side", "рядом"]];
+    if (i.before && i.after) modes.push(["slider", "слайдер"]);
+    if (i.diff) modes.push(["diff", "дифф"]);
+    if (!modes.some((m) => m[0] === mode)) mode = "side";
+    $("#modes").innerHTML = modes.map(([m, t]) => `<button class="chip" data-mode="${m}" aria-pressed="${m === mode}">${t}</button>`).join("");
+    $("#dlgTitle").textContent = `API ${i.api} · ${i.group ? i.group + " / " : ""}${i.name}` + (i.pct != null ? ` · ${i.same ? "без изменений" : i.pct + "%"}` : "");
+    const body = $("#dlgBody");
+    if (mode === "side") {
+      body.innerHTML = [["до", i.before], ["после", i.after]].filter((x) => x[1])
+        .map(([c, s]) => `<figure class="side"><img src="${esc(s)}" alt="${c}"><figcaption>${c}</figcaption></figure>`).join("");
+    } else if (mode === "diff") {
+      body.innerHTML = `<figure class="side"><img src="${esc(i.diff)}" alt="дифф"><figcaption>красное — изменившиеся пиксели</figcaption></figure>`;
+    } else {
+      body.innerHTML = `<div class="slider"><img src="${esc(i.after)}" alt="после"><div class="over"><img src="${esc(i.before)}" alt="до"></div><div class="bar"></div><input type="range" min="0" max="100" value="50" aria-label="до / после"></div>`;
+      const s = body.querySelector(".slider"), over = s.querySelector(".over"), bar = s.querySelector(".bar"), base = s.querySelector("img");
+      const set = (v) => { over.style.width = v + "%"; bar.style.left = v + "%"; over.querySelector("img").style.width = base.clientWidth + "px"; };
+      s.querySelector("input").oninput = (e) => set(e.target.value);
+      base.onload = () => set(50); if (base.complete) set(50);
+    }
+    if (!dlg.open) dlg.showModal();
+  }
+})();
+</script>
+</body>
+</html>

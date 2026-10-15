@@ -1,0 +1,14 @@
+# Смоук adbm: системные «Настройки» → «Экран» → кадр.
+# Регэксп текста покрывает английскую и русскую локаль эмулятора.
+# Данные системного приложения не чистим, поэтому stopApp + launchApp вместо clearState.
+appId: com.android.settings
+---
+- stopApp
+- launchApp
+- scrollUntilVisible:
+    element:
+      text: "(Display|Экран).*"
+    direction: DOWN
+- tapOn: "(Display|Экран).*"
+- waitForAnimationToEnd
+- takeScreenshot: "1-display"

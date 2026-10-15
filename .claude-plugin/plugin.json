@@ -1,0 +1,10 @@
+{
+  "name": "adbm",
+  "version": "0.1.0",
+  "description": "Android Debug Bridge Matrix: visual checks of Android apps by an agent — emulators by API level, Maestro flows in parallel, before/after board and contact sheet, low token usage.",
+  "author": { "name": "Stas Potapov" },
+  "license": "MIT",
+  "keywords": ["android", "adb", "emulator", "maestro", "screenshot", "visual-testing"],
+  "skills": ["./skill/"],
+  "agents": ["./skill/agents/adbm-eyes.md"]
+}
