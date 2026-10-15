@@ -14,12 +14,12 @@
 | `adbm prep` | анимации 0, demo mode статус-бара, тема, навигация, шрифт |
 | `adbm new <slug>`, `adbm status` | начать папку прогона, показать текущий прогон и счётчики |
 | `adbm install <apk> [--as before\|after]` | ставит APK на все API параллельно (по умолчанию `after`) |
-| `adbm launch`, `stop`, `clear`, `uninstall`, `open <uri>`, `perm`, `log` | управление приложением: запуск, остановка, данные, deep link, разрешения, хвост logcat |
+| `adbm launch`, `stop`, `clear`, `uninstall`, `open <uri>`, `perm`, `log` | управление приложением: запуск, остановка, данные, deep link, разрешения, хвост [logcat](https://developer.android.com/tools/logcat) |
 | `adbm push`, `pull`, `rotate`, `devices --stop`, `clean` | файлы, ориентация, остановка эмуляторов, удаление старых прогонов (оставляет 5; без `--yes` только печатает план) |
 | `adbm flow new <slug>` | шаблон flow в `.adbm/flows/` |
 | `adbm ui`, `tap`, `wait`, `assert`, `type`, `clear-field`, `key`, `swipe` | навигация по тексту дерева UI; `tap` печатает, что изменилось на экране, `--expect` ждёт следующий экран |
 | `adbm shot`, `look`, `thumb`, `annotate`, `record` | кадры в папку прогона, уменьшенный кадр или фрагмент, видео |
-| `adbm run <flow.yaml> --matrix …` | Maestro flow на всех API параллельно, матрица тем и навигации |
+| `adbm run <flow.yaml> --matrix …` | [Maestro flow](https://docs.maestro.dev) на всех API параллельно, матрица тем и навигации |
 | `adbm save-flow` | ручная сессия → Maestro flow |
 | `adbm diff` | пиксельный дифф (540 px, кропы, статус-бар отдельно), дифф дерева UI, `≈ apiN` для того же изменения на другом API |
 | `adbm board` | HTML-борд и коллаж `00-summary.png` |

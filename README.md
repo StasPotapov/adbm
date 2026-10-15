@@ -2,16 +2,16 @@
 
 [Русский](README.ru.md)
 
-A Claude Code skill and the `adbm` CLI: an agent works with an Android device and emulators
-over adb and spends few tokens on it. The agent calls `adbm` commands instead of raw `adb`.
+A [Claude Code](https://code.claude.com/docs/en/overview) [skill](https://code.claude.com/docs/en/skills) and the `adbm` CLI: an agent works with an Android device and [emulators](https://developer.android.com/studio/run/emulator)
+over [adb](https://developer.android.com/tools/adb) and spends few tokens on it. The agent calls `adbm` commands instead of raw `adb`.
 
 - **Device control.** The agent launches and stops the app, navigates the screen,
-  types text (Cyrillic included), reads logcat, grants permissions, copies files.
+  types text (Cyrillic included), reads [logcat](https://developer.android.com/tools/logcat), grants permissions, copies files.
 - **Several API levels at once.** The agent boots emulators for the Android versions you need,
-  installs the APK and runs a Maestro flow on all API levels in parallel, with a theme and navigation matrix.
+  installs the APK and runs a [Maestro flow](https://docs.maestro.dev) on all API levels in parallel, with a theme and navigation matrix.
 - **Screenshots and video.** The agent saves frames to the run folder, takes a downscaled frame or a crop, records video.
 - **Change checks.** The agent installs "before" and "after" builds and computes a pixel diff.
-  Then `adbm` builds an HTML board and a "before | after" PNG contact sheet, and a subagent writes the verdict.
+  Then `adbm` builds an HTML board and a "before | after" PNG contact sheet, and a [subagent](https://code.claude.com/docs/en/sub-agents) writes the verdict.
 
 A 1080×2400 screenshot costs a model ~3350 tokens, so screenshots never enter the agent's context:
 
@@ -37,13 +37,13 @@ status bar. A step-by-step walkthrough with diff lines and crops is in [docs/exa
 
 ADBM does not replace these tools: it ties them together and saves the agent's tokens.
 
-| Tool | What it does in ADBM |
-|---|---|
-| [Maestro](https://github.com/mobile-dev-inc/Maestro) — an open-source UI testing framework by mobile.dev, Apache 2.0 | runs scenarios: `adbm run` runs a flow on all API levels, `adbm save-flow` writes a flow from a manual session, `adbm type` types non-ASCII text through it. Flow syntax: [Maestro docs](https://docs.maestro.dev) |
-| [Android SDK](https://developer.android.com/tools): adb, emulator, sdkmanager, avdmanager | device connection, emulators, image downloads |
-| [Pillow](https://python-pillow.github.io) | pixel diff, crops, contact sheet |
-| [ffmpeg](https://ffmpeg.org) | frames from video for `adbm record` |
-| [Android CLI](https://developer.android.com/tools/agents/android-cli), optional | only `adbm annotate`: numbered elements on a screen without a UI tree |
+| Tool | License | What it does in ADBM |
+|---|---|---|
+| [Maestro](https://github.com/mobile-dev-inc/Maestro) — a UI testing framework by mobile.dev | Apache 2.0, open source | runs scenarios: `adbm run` runs a flow on all API levels, `adbm save-flow` writes a flow from a manual session, `adbm type` types non-ASCII text through it. Flow syntax: [Maestro docs](https://docs.maestro.dev) |
+| [Android SDK](https://developer.android.com/tools): adb, emulator, sdkmanager, avdmanager | Google's [Android SDK License Agreement](https://developer.android.com/studio/terms); open-source parts of the SDK keep their own licenses | device connection, emulators, image downloads |
+| [Pillow](https://python-pillow.github.io) | MIT-CMU, open source | pixel diff, crops, contact sheet |
+| [FFmpeg](https://ffmpeg.org) | LGPL 2.1+, open source; a build with `--enable-gpl` is GPL 2+ | frames from video for `adbm record` |
+| [Android CLI](https://developer.android.com/tools/agents/android-cli), optional | a closed Google binary, no published license; collects usage data, `adbm` turns that off with `--no-metrics` | only `adbm annotate`: numbered elements on a screen without a UI tree |
 
 ## Install
 

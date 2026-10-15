@@ -23,7 +23,7 @@ If the project settings list the API levels, `--api` can be left out
 ## 1. Builds and scenario
 
 `adbm install` installs the "before" build on all emulators at once, later the "after" build. `adbm run` runs
-one Maestro flow on all API levels in parallel, in every cell of the `theme=light,dark` matrix.
+one [Maestro flow](https://docs.maestro.dev) on all API levels in parallel, in every cell of the `theme=light,dark` matrix.
 Frames go to the run folder, not into the agent's context.
 
 ## 2. Diff

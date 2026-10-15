@@ -37,8 +37,8 @@ profile = pixel_8               # профиль новых AVD, см. avdmanage
 с причинами и ждёт ответа. Затем он записывает ответ: `adbm config --set devices.apis=28,33,35 --project`.
 Какие уровни подходят для каких изменений, описано в [skill/reference/api-matrix.md](../skill/reference/api-matrix.md).
 
-Ссылка на образы не нужна. `adbm setup` строит план: `sdkmanager` скачивает недостающие образы из
-репозитория Google в `$ANDROID_HOME/system-images/`, `avdmanager` создаёт AVD. Уровень, для которого
+Ссылка на образы не нужна. `adbm setup` строит план: [`sdkmanager`](https://developer.android.com/tools/sdkmanager) скачивает недостающие образы из
+репозитория Google в `$ANDROID_HOME/system-images/`, [`avdmanager`](https://developer.android.com/tools/avdmanager) создаёт [AVD](https://developer.android.com/studio/run/emulator). Уровень, для которого
 AVD уже есть, `setup` пропускает. Уже скачанный образ он использует повторно. Если `image` или `profile`
 не совпадают с существующим AVD, `setup` об этом пишет, а AVD не трогает: чтобы пересоздать, удали его.
 
@@ -52,7 +52,7 @@ model = haiku     # sonnet, opus, haiku, fable; пусто — модель ти
 effort = low      # low, medium, high, xhigh, max; пусто — обычный effort
 ```
 
-По умолчанию субагент `adbm-eyes` работает на `haiku` с effort `low`.
+По умолчанию [субагент](https://code.claude.com/docs/en/sub-agents) `adbm-eyes` работает на `haiku` с effort `low`.
 
 Сильная модель здесь не нужна: главное решают детерминированные проверки. `adbm diff` без модели
 находит изменённые пары, область и процент изменения, отдельно сравнивает статус-бар. Модель только
@@ -72,7 +72,7 @@ Effort `high` в этом прогоне не помог: субагент по�
 
 ## Хук-ограждение
 
-`skill/hooks/adbm-guard.py` запрещает `Read` полноразмерного кадра и сырого дампа UI. Так агент
+[Хук](https://code.claude.com/docs/en/hooks) `skill/hooks/adbm-guard.py` запрещает `Read` полноразмерного кадра и сырого дампа UI. Так агент
 не потратит ~3350 токенов на один скриншот случайно.
 
 - **Плагин** ставит хук сам (`skill/hooks/hooks.json`).

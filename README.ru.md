@@ -2,16 +2,16 @@
 
 [English](README.md)
 
-Claude Code skill и CLI `adbm`: агент работает с Android-устройством и эмуляторами через adb
+[Claude Code](https://code.claude.com/docs/en/overview) [skill](https://code.claude.com/docs/en/skills) и CLI `adbm`: агент работает с Android-устройством и [эмуляторами](https://developer.android.com/studio/run/emulator) через [adb](https://developer.android.com/tools/adb)
 и тратит на это мало токенов. Агент вызывает команды `adbm` вместо сырого `adb`.
 
 - **Управление устройством.** Агент запускает и останавливает приложение, ходит по экрану,
-  вводит текст (в том числе кириллицу), читает logcat, выдаёт разрешения, копирует файлы.
+  вводит текст (в том числе кириллицу), читает [logcat](https://developer.android.com/tools/logcat), выдаёт разрешения, копирует файлы.
 - **Несколько API сразу.** Агент поднимает эмуляторы нужных версий Android, ставит APK
-  и прогоняет Maestro flow на всех API параллельно, с матрицей тем и навигации.
+  и прогоняет [Maestro flow](https://docs.maestro.dev) на всех API параллельно, с матрицей тем и навигации.
 - **Скриншоты и видео.** Агент снимает кадры в папку прогона, берёт уменьшенный кадр или фрагмент, пишет видео.
 - **Проверка изменений.** Агент ставит сборки «до» и «после» и считает пиксельный дифф.
-  Затем `adbm` собирает HTML-борд и PNG-коллаж «до | после», а субагент пишет вердикт.
+  Затем `adbm` собирает HTML-борд и PNG-коллаж «до | после», а [субагент](https://code.claude.com/docs/en/sub-agents) пишет вердикт.
 
 Кадр 1080×2400 стоит модели ~3350 токенов, поэтому картинки в контекст агента не идут:
 
@@ -37,13 +37,13 @@ Claude Code skill и CLI `adbm`: агент работает с Android-устр
 
 ADBM не заменяет эти инструменты, а связывает их и экономит токены агента.
 
-| Инструмент | Что делает в ADBM |
-|---|---|
-| [Maestro](https://github.com/mobile-dev-inc/Maestro) — открытый фреймворк UI-тестов от mobile.dev, Apache 2.0 | выполняет сценарии: `adbm run` гоняет flow на всех API, `adbm save-flow` пишет flow из ручной сессии, `adbm type` вводит через него не-ASCII текст. Синтаксис flow — [документация Maestro](https://docs.maestro.dev) |
-| [Android SDK](https://developer.android.com/tools): adb, emulator, sdkmanager, avdmanager | связь с устройством, эмуляторы, скачивание образов |
-| [Pillow](https://python-pillow.github.io) | пиксельный дифф, кропы, коллаж |
-| [ffmpeg](https://ffmpeg.org) | кадры из видео для `adbm record` |
-| [Android CLI](https://developer.android.com/tools/agents/android-cli), по желанию | только `adbm annotate`: номера элементов на экране без дерева UI |
+| Инструмент | Лицензия | Что делает в ADBM |
+|---|---|---|
+| [Maestro](https://github.com/mobile-dev-inc/Maestro) — фреймворк UI-тестов от mobile.dev | Apache 2.0, открытый | выполняет сценарии: `adbm run` гоняет flow на всех API, `adbm save-flow` пишет flow из ручной сессии, `adbm type` вводит через него не-ASCII текст. Синтаксис flow — [документация Maestro](https://docs.maestro.dev) |
+| [Android SDK](https://developer.android.com/tools): adb, emulator, sdkmanager, avdmanager | [Android SDK License Agreement](https://developer.android.com/studio/terms) от Google; открытые части SDK — под своими лицензиями | связь с устройством, эмуляторы, скачивание образов |
+| [Pillow](https://python-pillow.github.io) | MIT-CMU, открытый | пиксельный дифф, кропы, коллаж |
+| [FFmpeg](https://ffmpeg.org) | LGPL 2.1+, открытый; сборка с `--enable-gpl` — GPL 2+ | кадры из видео для `adbm record` |
+| [Android CLI](https://developer.android.com/tools/agents/android-cli), по желанию | закрытый бинарник Google, лицензия не опубликована; собирает данные об использовании, `adbm` выключает это флагом `--no-metrics` | только `adbm annotate`: номера элементов на экране без дерева UI |
 
 ## Установка
 

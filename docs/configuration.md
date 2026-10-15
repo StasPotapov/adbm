@@ -37,8 +37,8 @@ On the first check in a project `apis` is empty. The agent reads the app's `minS
 with reasons and waits for the answer. Then it writes the answer: `adbm config --set devices.apis=28,33,35 --project`.
 Which levels fit which change is in [skill/reference/api-matrix.md](../skill/reference/api-matrix.md).
 
-No link to images is needed. `adbm setup` builds a plan: `sdkmanager` downloads the missing images from
-Google's repository into `$ANDROID_HOME/system-images/`, and `avdmanager` creates AVDs. `setup` skips a level
+No link to images is needed. `adbm setup` builds a plan: [`sdkmanager`](https://developer.android.com/tools/sdkmanager) downloads the missing images from
+Google's repository into `$ANDROID_HOME/system-images/`, and [`avdmanager`](https://developer.android.com/tools/avdmanager) creates [AVDs](https://developer.android.com/studio/run/emulator). `setup` skips a level
 that already has an AVD and reuses an image already on disk. If `image` or `profile` differs from an existing AVD,
 `setup` says so and leaves the AVD alone: delete it to recreate it.
 
@@ -52,7 +52,7 @@ model = haiku     # sonnet, opus, haiku, fable; empty — the default of the age
 effort = low      # low, medium, high, xhigh, max; empty — the usual effort
 ```
 
-By default the `adbm-eyes` subagent runs on `haiku` with effort `low`.
+By default the `adbm-eyes` [subagent](https://code.claude.com/docs/en/sub-agents) runs on `haiku` with effort `low`.
 
 A strong model is not needed here: deterministic checks do the main work. `adbm diff` finds the changed
 pairs, the area and the changed percent without a model, and compares the status bar apart. The model only
@@ -72,7 +72,7 @@ the "The adbm-eyes subagent" section of `skill/SKILL.md` and `skill/agents/adbm-
 
 ## Guard hook
 
-`skill/hooks/adbm-guard.py` denies `Read` of a full-size frame or a raw UI dump, so an agent cannot
+The [hook](https://code.claude.com/docs/en/hooks) `skill/hooks/adbm-guard.py` denies `Read` of a full-size frame or a raw UI dump, so an agent cannot
 spend ~3350 tokens on one screenshot by accident.
 
 - **A plugin install** registers the hook itself (`skill/hooks/hooks.json`).
