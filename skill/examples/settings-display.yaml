@@ -1,6 +1,6 @@
-# Смоук adbm: системные «Настройки» → «Экран» → кадр.
-# Регэксп текста покрывает английскую и русскую локаль эмулятора.
-# Данные системного приложения не чистим, поэтому stopApp + launchApp вместо clearState.
+# adbm smoke test: system Settings → Display → frame.
+# The text regex covers English and Russian emulator locales.
+# A system app's data is not cleared, so stopApp + launchApp instead of clearState.
 appId: com.android.settings
 ---
 - stopApp

@@ -1,7 +1,7 @@
 ---
 name: adbm
-description: "Проверяет Android-приложение на эмуляторах агентом и экономит токены: поднимает эмуляторы нужных API, ставит сборки «до» и «после», ходит по UI по тексту дерева, гоняет Maestro-сценарии на нескольких API параллельно, собирает HTML-борд и PNG-коллаж «до | после», вердикт пишет субагент. Ещё управляет устройством через adb: тапы, ввод, запуск, логи, кадры. - «проверь на эмуляторе», «сними скриншоты до/после», «посмотри, как выглядит на API 28/33/35», «прогони сценарий в тёмной теме и жестах», «проверь правку шторки/инсетов/навбара», «запусти приложение на эмуляторе», «что на экране», adb-команды к устройству."
-argument-hint: "<что проверить> [--api 28,33,35]"
+description: "Checks Android apps on emulators as an agent while saving tokens: boots emulators for the needed API levels, installs \"before\" and \"after\" builds, navigates the UI by tree text, runs Maestro flows on several API levels in parallel, builds an HTML board and a \"before | after\" PNG contact sheet, and a subagent writes the verdict. Also drives a device over adb: taps, text input, app launch, logs, screenshots. - \"check it on the emulator\", \"take before/after screenshots\", \"see how it looks on API 28/33/35\", \"run the flow in dark theme and gesture navigation\", \"check the bottom sheet / insets / navbar change\", \"launch the app on the emulator\", \"what is on the screen\", adb commands to a device."
+argument-hint: "<what to check> [--api 28,33,35]"
 allowed-tools:
   - Bash
   - Read
@@ -14,202 +14,206 @@ allowed-tools:
 
 # ADBM — Android Debug Bridge Matrix
 
-CLI лежит в `bin/` этого скилла:
+The CLI is in `bin/` of this skill:
 
 ```bash
 ADBM="${CLAUDE_SKILL_DIR}/bin/adbm"
 ```
 
-Если переменная не подставилась, возьми каталог из строки «Base directory for this skill».
+If the variable is not substituted, take the folder from the "Base directory for this skill" line.
 
-Все команды запускай из корня проекта: прогоны ложатся в `<проект>/build/adbm/<дата>-<slug>/`.
-Справка по команде — `"$ADBM" <команда> -h`.
+Run all commands from the project root: runs go to `<project>/build/adbm/<date>-<slug>/`.
+Help for a command: `"$ADBM" <command> -h`. CLI output is in Russian; the meaning of each
+message is given below where it matters.
 
-## Просто действие с устройством
+## Just an action on the device
 
-Если просят что-то сделать на устройстве без проверки вёрстки, сразу выполни команду.
-Примеры: «поставь APK», «открой экран», «нажми», «введи», «покажи логи», «что на экране».
-`doctor`, выбор API, `new`, кадры, `diff` и `board` в этом случае не нужны.
+If you are asked to do something on a device without a layout check, run the command right away.
+Examples: "install the APK", "open the screen", "tap", "type", "show the logs", "what is on the screen".
+Then you do not need `doctor`, API selection, `new`, frames, `diff` or `board`.
 
 ```bash
-"$ADBM" devices                              # какие устройства и их API
+"$ADBM" devices                              # devices and their API levels
 "$ADBM" install app.apk --as after --api 35
-"$ADBM" launch <пакет> --api 35
-"$ADBM" ui --api 35                          # что на экране — текстом
-"$ADBM" tap --api 35 "Войти"
+"$ADBM" launch <package> --api 35
+"$ADBM" ui --api 35                          # what is on the screen, as text
+"$ADBM" tap --api 35 "Sign in"
 "$ADBM" type --api 35 "user@example.com"
 "$ADBM" key --api 35 back
 ```
 
-Вне прогона `adbm` не создаёт `build/adbm/` в проекте: служебные файлы идут в `~/.cache/adbm/`.
-Логи, deep link, Wi-Fi, density, accessibility и прочее редкое — сырой adb из `reference/adb.md`.
-Если что-то не запускается, только тогда `"$ADBM" doctor`.
+Outside a run, `adbm` does not create `build/adbm/` in the project: its service files go to `~/.cache/adbm/`.
+Logs, deep links, Wi-Fi, density, accessibility and other rare actions: raw adb from `reference/adb.md`.
+Run `"$ADBM" doctor` only if something does not start.
 
-Все правила ниже относятся к визуальной проверке: кадрам, сравнению «до/после» и сценариям.
+All rules below apply to visual checks: frames, "before/after" comparison and flows.
 
-## Экономия токенов — правила первыми
+## Token economy — rules first
 
-Картинка 1080×2400 стоит ~3350 токенов, строка дерева UI — ~15. Поэтому:
+A 1080×2400 image costs ~3350 tokens, a line of the UI tree ~15. So:
 
-1. **Навигация — только по тексту.** Экран читай через `adbm ui` или `adbm ui --find <текст>`.
-   Тапай по селектору: `adbm tap "Закрыть"`. Координаты из картинки не угадывай.
-2. **«Изменилось ли» считает `adbm diff`**, а не ты. Он даёт процент и область изменений.
-   Для кадров из `adbm shot` ещё и сдвиги элементов («"Закрыть" ↓48 px»): рядом с кадром
-   лежит дерево UI. Кадры Maestro идут без дерева. Пары «без изменений» никто не смотрит.
-3. **`adbm shot` и `adbm run` кадры только сохраняют.** Файлы из `api*/` не открывай через Read.
-4. **Если без картинки никак** — `adbm look` (540 px, ~860 токенов), `--small` (360 px, ~380),
-   `--crop x0,y0,x1,y1` для фрагмента. В выводе есть `scale`: экранная координата = координата
-   на картинке / scale. Больше 3 `look` за задачу — повод остановиться и подумать.
-5. **Оценку кадров делает субагент `adbm-eyes`** (см. «Проверка»). Он смотрит коллаж и дифф
-   и возвращает до 10 строк.
-6. **Вывод команд короткий.** Подробности — в `<прогон>/logs/`. Читай лог только при сбое
-   и только нужную часть: `tail`, `grep`.
+1. **Navigate by text only.** Read the screen with `adbm ui` or `adbm ui --find <text>`.
+   Tap by selector: `adbm tap "Close"`. Do not guess coordinates from an image.
+2. **`adbm diff` decides "did it change"**, not you. It reports the percent and area of change.
+   For frames from `adbm shot` it also reports element shifts (`"Close" ↓48 px`): the UI tree is
+   saved next to the frame. Maestro frames have no tree. Nobody looks at unchanged pairs.
+3. **`adbm shot` and `adbm run` only save frames.** Do not open files from `api*/` with Read.
+4. **If you cannot do without an image** — `adbm look` (540 px, ~860 tokens), `--small` (360 px, ~380),
+   `--crop x0,y0,x1,y1` for a fragment. The output has `scale`: screen coordinate = image
+   coordinate / scale. More than 3 `look` calls per task is a reason to stop and think.
+5. **The `adbm-eyes` subagent judges the frames** (see "Check"). It looks at the contact sheet
+   and the diff and returns up to 10 lines.
+6. **Command output is short.** Details are in `<run>/logs/`. Read a log only on failure
+   and only the part you need: `tail`, `grep`.
 
-`<прогон>/stats.json` считает, сколько кадров снято и сколько картинок ушло в контекст.
+`<run>/stats.json` counts frames taken and images sent to the main context.
 
-## Порядок работы
+## Workflow
 
-### 1. Окружение
+### 1. Environment
 
-`"$ADBM" doctor`. Если строки «нет» мешают задаче, покажи их человеку вместе с командами
-починки и спроси, ставить ли. `adbm setup … ` без `--yes` печатает только план.
-Подробности — `reference/setup.md`.
+`"$ADBM" doctor`. If rows marked «нет» (missing) block the task, show them to the person with
+the fix commands and ask whether to install. `adbm setup …` without `--yes` only prints the plan.
+Details: `reference/setup.md`.
 
-### 2. API
+### 2. API levels
 
-Сначала узнай `minSdk` и `targetSdk` приложения: `grep -rn "minSdk\|targetSdk"` по `build.gradle*`
-и `libs.versions.toml`. Эмуляторы ниже `minSdk` не предлагай. `adbm install` тоже читает
-`minSdk` из APK и пропускает такие устройства, `adbm run` — тоже. Если `targetSdk` ≥ 35,
-edge-to-edge обязателен — это довод взять API 35.
+First find the app's `minSdk` and `targetSdk`: `grep -rn "minSdk\|targetSdk"` over `build.gradle*`
+and `libs.versions.toml`. Do not offer emulators below `minSdk`. `adbm install` also reads
+`minSdk` from the APK and skips such devices, and so does `adbm run`. If `targetSdk` ≥ 35,
+edge-to-edge is enforced — a reason to include API 35.
 
-По умолчанию проверяй на одном API — 35. Если правка трогает системные части (инсеты,
-навбар, тему, разрешения, «назад»), предложи набор API с причиной по `reference/api-matrix.md`
-и дождись ответа. Пример: «Инсеты шторки → 28, 33, 35: на 35 обязателен edge-to-edge».
+By default check on one API level — 35. If the change touches system parts (insets, navbar,
+theme, permissions, back navigation), offer a set of API levels with reasons from
+`reference/api-matrix.md` and wait for the answer. Example: "Sheet insets → 28, 33, 35: edge-to-edge is enforced on 35".
 
-`"$ADBM" devices --start 28,33,35` поднимает недостающие эмуляторы. Устройство всегда
-адресуй через `--api N`: serial меняется между запусками.
+`"$ADBM" devices --start 28,33,35` boots missing emulators. Always address a device by `--api N`:
+the serial changes between launches.
 
-### 3. Прогон и сборки
+### 3. Run folder and builds
 
 ```bash
-"$ADBM" new <slug>                                   # новая папка прогона
+"$ADBM" new <slug>                                   # new run folder
 "$ADBM" install <before.apk> --as before --api 28,33,35
 ```
 
-«До» — сними до правки или собери базовый коммит в `git worktree` (`reference/setup.md`).
-«После» — текущий код. На устройстве одна версия за раз: сначала всё «до», затем всё «после».
+"Before": capture before the change, or build the base commit in a `git worktree` (`reference/setup.md`).
+"After": the current code. A device holds one version at a time: first everything "before", then everything "after".
 
-### 4. Действия: руками или сценарием
+### 4. Actions: by hand or by flow
 
-**Руками** — когда нужны один-два кадра на одном-двух API и путь до экрана короткий:
+**By hand** — when you need one or two frames on one or two API levels and the path to the screen is short:
 
 ```bash
-"$ADBM" prep --api 35 --theme dark            # анимации 0, demo mode статус-бара
-"$ADBM" launch <пакет> --api 35 --clear
-"$ADBM" ui --api 35                           # [3] Button "Закрыть" id=close @540,1980 click
-"$ADBM" tap --api 35 "Закрыть"                # текст, content-desc, id; --scroll 4 — прокрутить
-"$ADBM" shot 1-sheet --api 35 --as before     # кадр в прогон, в контекст не идёт
+"$ADBM" prep --api 35 --theme dark            # animations off, status bar demo mode
+"$ADBM" launch <package> --api 35 --clear
+"$ADBM" ui --api 35                           # [3] Button "Close" id=close @540,1980 click
+"$ADBM" tap --api 35 "Close"                  # text, content-desc, id; --scroll 4 to scroll
+"$ADBM" shot 1-sheet --api 35 --as before     # frame into the run, not into the context
 ```
 
-Ещё есть `type` (ASCII), `key back|home|enter`, `swipe up|down`, `tap "[N]"` по номеру из `ui`.
-Для экрана без дерева (Canvas, игра): `annotate` и `tap '#N'` через Android CLI.
+There are also `type` (ASCII), `key back|home|enter`, `swipe up|down`, `tap "[N]"` by number from `ui`.
+Switches without a label show as `near="<row text>"`: tap the row text.
+For a screen without a tree (Canvas, a game): `annotate` and `tap '#N'` through Android CLI.
 
-**Сценарий обязателен**, если выполнено хоть одно:
-- путь до экрана длиннее 3–4 шагов;
-- нужна матрица тем, навигации или шрифтов;
-- три API или пара «до/после»;
-- проверку захотят повторить.
+**A flow is required** if any of these is true:
+- the path to the screen is longer than 3–4 steps;
+- you need a matrix of themes, navigation modes or font scales;
+- three API levels or a "before/after" pair;
+- the check will be repeated.
 
-Тогда напиши Maestro flow по `reference/flows.md` и прогони:
+Then write a Maestro flow following `reference/flows.md` and run it:
 
 ```bash
-"$ADBM" run .adbm/flows/<slug>.yaml --api 35                  # сначала один API
+"$ADBM" run .adbm/flows/<slug>.yaml --api 35                  # one API level first
 "$ADBM" run .adbm/flows/<slug>.yaml --api 28,33,35 --as before \
   --matrix "nav=threebutton,gestural" "theme=light,dark"
 ```
 
-Подпапки кадров идут в порядке осей: `api35/before/gestural/dark/<кадр>.png`.
-Тёмная тема на API 28 к системному UI не применяется, см. `reference/api-matrix.md`.
-`run` гоняет все API параллельно и печатает строку на ячейку. При сбое читай
-`logs/ui-fail-*.txt` (дерево экрана) и строку причины, а не скриншот.
+Frame subfolders follow the axis order: `api35/before/gestural/dark/<frame>.png`.
+Dark theme is not applied to the system UI on API 28, see `reference/api-matrix.md`.
+`run` drives all API levels in parallel and prints one line per cell. On failure read
+`logs/ui-fail-*.txt` (the screen tree) and the reason line, not a screenshot.
 
-**Зависания и сбои.** `adbm run` следит за Maestro сам и печатает пороги в строке `сторож:`.
-- **Тишина** (`--stall`) — самое долгое ожидание во flow (`timeout:` у `extendedWaitUntil` и др.)
-  плюс 20 с, не меньше 45 с. Maestro печатает шаг только после его конца, поэтому порог
-  должен быть больше самого долгого шага.
-- **Ячейка** (`--timeout`) — 2 × прошлый успешный прогон этого flow на этом API, не меньше 90 с.
-  Истории нет — 600 с, это страховка: зависание раньше ловит тишина.
-- **Свой порог** ставь, только если знаешь больше `adbm`. Пример: шаг без явного `timeout`
-  ждёт сеть или долгую загрузку данных — лучше добавь этому шагу `timeout:` во flow.
+**Hangs and failures.** `adbm run` watches Maestro itself and prints its limits in the `сторож:` (watchdog) line.
+- **Silence** (`--stall`) — the longest wait in the flow (`timeout:` of `extendedWaitUntil` and others)
+  plus 20 s, at least 45 s. Maestro prints a step only after it ends, so the limit
+  must be longer than the longest step.
+- **Cell** (`--timeout`) — 2 × the last successful run of this flow on this API level, at least 90 s.
+  Without history — 600 s, a safety net: silence catches a hang earlier.
+- **Set your own limit** only if you know more than `adbm`. Example: a step without an explicit `timeout`
+  waits for the network or a long data load — better add `timeout:` to that step in the flow.
 
-Если порог превышен, `adbm` убивает Maestro и печатает `ЗАВИС … после шага «…»`. Рядом диагноз:
-устройство офлайн, системный диалог «не отвечает» или «остановлено», какое окно в фокусе.
-Что делать по диагнозу:
-- **«устройство не отвечает»** — `adbm devices`. Если эмулятора нет в списке,
-  `adb -s <serial> emu kill`, затем `adbm devices --start <API>`;
-- **диалог «не отвечает» или «остановлено»** — это находка, а не сбой инструмента:
-  `logs/crash-*.txt`, `adb logcat -b crash`. Сообщи человеку, закрой диалог `adbm tap "Закрыть"`;
-- **в фокусе чужое окно** (разрешение, клавиатура, системный диалог) — добавь шаг во flow;
-- **один и тот же шаг виснет дважды** — не повторяй третий раз, покажи человеку шаг и диагноз.
+When a limit is exceeded, `adbm` kills Maestro and prints `ЗАВИС … после шага «…»` (hung after step …).
+Next to it is a diagnosis: the device is offline, a system dialog "isn't responding" or "has stopped"
+is on screen, or which window has focus. What to do:
+- **device not responding** (`устройство … не отвечает`) — `adbm devices`. If the emulator is missing,
+  `adb -s <serial> emu kill`, then `adbm devices --start <API>`;
+- **"isn't responding" or "has stopped" dialog** — this is a finding, not a tool failure:
+  `logs/crash-*.txt`, `adb logcat -b crash`. Tell the person and close the dialog with `adbm tap`;
+- **a foreign window has focus** (permission, keyboard, system dialog) — add a step to the flow;
+- **the same step hangs twice** — do not retry a third time; show the person the step and the diagnosis.
 
-Свои долгие команды (`./gradlew`, `adbm run`) запускай с таймаутом Bash не меньше 10 минут
-или в фоне. Не жди молча: нет результата за разумное время — проверь `adbm devices` и лог.
+Run your own long commands (`./gradlew`, `adbm run`) with a Bash timeout of at least 10 minutes
+or in the background. Do not wait silently: no result in a reasonable time — check `adbm devices` and the log.
 
-**Переход:** ручная проверка разрослась — `"$ADBM" save-flow <slug> --api 35`, дальше по сценарию.
+**Switching:** a manual check grew — `"$ADBM" save-flow <slug> --api 35`, then continue with the flow.
 
-Анимацию или «прыжок» снимай видео: `"$ADBM" record <имя> --api 35 --seconds 5 --slow 3 -- <команда>`.
-Получишь mp4 и лист кадров `-sheet.png` для субагента.
+Record animations or "jumps" as video: `"$ADBM" record <name> --api 35 --seconds 5 --slow 3 -- <command>`.
+You get an mp4 and a contact sheet `-sheet.png` for the subagent.
 
-### 5. Проверка
+### 5. Check
 
 ```bash
-"$ADBM" diff      # строка на изменённую пару, diff/*.png, diff/diff.json
-"$ADBM" board     # index.html + manifest.js + 00-summary.png (если пар ≤ 24, иначе PNG на API)
+"$ADBM" diff      # one line per changed pair, diff/*.png, diff/diff.json
+"$ADBM" board     # index.html + manifest.js + 00-summary.png (if pairs ≤ 24, else one PNG per API)
 ```
 
-Затем запусти субагента `adbm-eyes`. Если ADBM стоит плагином, это агент `adbm:adbm-eyes`.
-Иначе — инструмент Agent, `subagent_type: general-purpose`, `model: sonnet`, промпт —
-содержимое `agents/adbm-eyes.md` без frontmatter. В обоих случаях добавь в конце промпта блок:
+Then start the `adbm-eyes` subagent. If ADBM is installed as a plugin, it is the `adbm:adbm-eyes` agent.
+Otherwise use the Agent tool with `subagent_type: general-purpose`, `model: sonnet`, and as the prompt
+the content of `agents/adbm-eyes.md` without frontmatter. In both cases add this block at the end of the prompt:
 
 ```
-Задача: <что меняли и что должно получиться>
-Чек-лист: <2–6 пунктов>
-Прогон: <абсолютный путь к папке прогона>
-Изменённые пары:
-<вывод adbm diff>
+Task: <what was changed and what should come out>
+Checklist: <2–6 items>
+Run: <absolute path to the run folder>
+Changed pairs:
+<adbm diff output>
 ```
 
-Субагент допишет вердикт в `<прогон>/notes.md`. После этого снова запусти `"$ADBM" board`:
-борд покрасит кадры. Статусы такие:
-- **без изменений** — ставит `adbm diff`, субагент такие пары не смотрит;
-- **ожидаемо** — изменилось, как задумано;
-- **проблема** — дефект или изменение там, где его не ждали;
-- **посмотреть** — субагент не уверен, нужен человек. Если нужно, открой его через `"$ADBM" board --open`.
+The subagent appends its verdict to `<run>/notes.md`. Then run `"$ADBM" board` again:
+the board colours the frames. The statuses:
+- **unchanged** — set by `adbm diff`; the subagent does not look at such pairs;
+- **expected** — changed as intended;
+- **problem** — a defect, or a change where none was expected;
+- **review** — the subagent is not sure; a person should look.
 
-### 6. Итог человеку
+If needed, open the board: `"$ADBM" board --open`.
 
-- Путь к борду: `<прогон>/index.html`.
-- Итог в 3 строки: сколько «ожидаемо», «проблема», «посмотреть», «без изменений»;
-  что сломано и на каких API.
-- Что посмотреть глазами: 1–3 кадра с путями.
+### 6. Report to the person
 
-## Справочники
+- Path to the board: `<run>/index.html`.
+- Summary in 3 lines: how many expected, problem, review, unchanged;
+  what is broken and on which API levels.
+- What to look at: 1–3 frames with paths.
 
-| Файл | Когда читать |
+## References
+
+| File | When to read |
 |---|---|
-| `reference/setup.md` | SDK, образы, AVD, Maestro, Android CLI, сборка «до» в worktree |
-| `reference/api-matrix.md` | какие API и оси матрицы предлагать для правки |
-| `reference/flows.md` | как писать и чинить Maestro flow |
-| `reference/adb.md` | сырой adb для редких действий: логи, deep link, Wi-Fi, accessibility |
+| `reference/setup.md` | SDK, system images, AVDs, Maestro, Android CLI, "before" build in a worktree |
+| `reference/api-matrix.md` | which API levels and matrix axes to offer for a change |
+| `reference/flows.md` | how to write and fix a Maestro flow |
+| `reference/adb.md` | raw adb for rare actions: logs, deep links, Wi-Fi, accessibility |
 
-## Ограничения
+## Limitations
 
-- `adbm type` вводит только ASCII. Кириллицу вводи во flow через Maestro `inputText`.
-- На API 28 нет жестовой навигации: ячейки `nav=gestural` пропускаются.
-- `prep --locale` работает на API 33+ и требует `--app <пакет>`. `adbm run` берёт пакет сам:
-  из `builds.json` или `appId` flow. Ячейка `locale` без пакета или на API < 33 пропускается.
-- **Защита от скриншотов (`FLAG_SECURE`)** — частая у банков и менеджеров паролей. Кадр выходит
-  пустым (Maestro: `Screenshot returned null`) или чёрным. `run` и `shot` об этом предупреждают.
-  Выключи защиту в приложении первыми шагами flow или в отладочной сборке.
-- Физические устройства `adbm` видит, но при совпадении API берёт эмулятор.
-  Физическое устройство адресуй через `--serial`.
+- `adbm type` types ASCII only. Type non-Latin text in a flow with Maestro `inputText`.
+- API 28 has no gesture navigation: `nav=gestural` cells are skipped.
+- `prep --locale` works on API 33+ and needs `--app <package>`. `adbm run` finds the package itself:
+  from `builds.json` or the flow's `appId`. A `locale` cell without a package or below API 33 is skipped.
+- **Screenshot protection (`FLAG_SECURE`)** — common in banking apps and password managers. The frame
+  comes out empty (Maestro: `Screenshot returned null`) or black. `run` and `shot` warn about it.
+  Turn the protection off in the app as the first steps of the flow, or in a debug build.
+- `adbm` sees physical devices, but when API levels match it picks the emulator.
+  Address a physical device with `--serial`.

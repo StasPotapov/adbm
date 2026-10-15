@@ -1,23 +1,23 @@
-# Сырой adb — когда `adbm` не хватает
+# Raw adb — when `adbm` is not enough
 
-Справочник для редких действий. Обычную работу делай через `adbm`: команды ниже
-не пишут журнал для `save-flow` и не раскладывают кадры по прогону.
+A reference for rare actions. Do everyday work through `adbm`: the commands below
+do not log to the `save-flow` journal and do not sort frames into a run.
 
-Если подключено больше одного устройства, всегда пиши `adb -s <serial>`.
-Serial по API даёт `adbm devices`. Serial эмулятора меняется между запусками.
+With more than one device connected, always write `adb -s <serial>`.
+`adbm devices` maps API levels to serials. An emulator's serial changes between launches.
 
-## Устройства и сервер
+## Devices and server
 
 ```bash
-adb devices -l                       # список
-adb start-server                     # adb kill-server — остановить
-adb kill-server && adb start-server  # перезапуск сервера
-adb -s SERIAL tcpip 5555             # Wi-Fi: сначала по USB
+adb devices -l                       # list
+adb start-server                     # adb kill-server to stop
+adb kill-server && adb start-server  # restart the server
+adb -s SERIAL tcpip 5555             # Wi-Fi: over USB first
 adb connect <ip>:5555
-adb -s SERIAL shell ip route | grep src   # IP устройства
+adb -s SERIAL shell ip route | grep src   # device IP
 ```
 
-## Состояние
+## State
 
 ```bash
 adb -s SERIAL shell wm size
@@ -26,7 +26,7 @@ adb -s SERIAL shell dumpsys window | grep -E 'mCurrentFocus|mFocusedApp'
 adb -s SERIAL shell getprop ro.build.version.sdk
 ```
 
-## Приложение
+## App
 
 ```bash
 adb -s SERIAL shell pm list packages | grep <package>
@@ -38,30 +38,30 @@ adb -s SERIAL shell pm clear <package>
 adb -s SERIAL uninstall <package>
 ```
 
-`monkey -p <package> 1` на эмуляторах API 35 печатает `SYS_KEYS has no physical keys`
-и приложение не запускает. Поэтому `adbm launch` запускает через `am start`.
+On API 35 emulators `monkey -p <package> 1` prints `SYS_KEYS has no physical keys`
+and does not start the app. That is why `adbm launch` uses `am start`.
 
-## Ввод
+## Input
 
 ```bash
 adb -s SERIAL shell input tap X Y
-adb -s SERIAL shell input tap X Y && sleep 0.1 && adb -s SERIAL shell input tap X Y   # двойной тап
-adb -s SERIAL shell input swipe X Y X Y 3000             # долгое нажатие
+adb -s SERIAL shell input tap X Y && sleep 0.1 && adb -s SERIAL shell input tap X Y   # double tap
+adb -s SERIAL shell input swipe X Y X Y 3000             # long press
 adb -s SERIAL shell input swipe X1 Y1 X2 Y2 300
 adb -s SERIAL shell input keyevent KEYCODE_BACK          # HOME, ENTER, DEL, TAB, ESCAPE, MENU, APP_SWITCH
 adb -s SERIAL shell input keyevent KEYCODE_VOLUME_UP     # VOLUME_DOWN, POWER
-adb -s SERIAL shell input text "hello%sworld"            # только ASCII, пробел — %s
+adb -s SERIAL shell input text "hello%sworld"            # ASCII only, space is %s
 ```
 
-Кириллицу `input text` не вводит. Есть два способа:
-- во flow — Maestro `inputText`;
-- руками — ADB Keyboard, если он стоит:
-  `ime set com.android.adbkeyboard/.AdbIME`, затем
+`input text` cannot type non-Latin text. Two ways around it:
+- in a flow — Maestro `inputText`;
+- by hand — ADB Keyboard, if installed:
+  `ime set com.android.adbkeyboard/.AdbIME`, then
   `am broadcast -a ADB_INPUT_B64 --es msg "$(echo -n 'текст' | base64)"`;
-  очистить поле — `am broadcast -a ADB_CLEAR_TEXT`.
+  clear the field — `am broadcast -a ADB_CLEAR_TEXT`.
 
-Вернуться на главный экран: `adbm key home`. Если нужно пройти назад по стеку,
-жми «назад», пока в фокусе не окажется лаунчер:
+Go to the home screen: `adbm key home`. To walk back through the stack,
+press back until the launcher has focus:
 
 ```bash
 HOME_PKG=$(adb -s SERIAL shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME | tail -1 | cut -d/ -f1)
@@ -71,7 +71,7 @@ for i in $(seq 1 20); do
 done
 ```
 
-## Кадры и дерево
+## Frames and tree
 
 ```bash
 adb -s SERIAL exec-out screencap -p > shot.png
@@ -79,9 +79,9 @@ adb -s SERIAL exec-out sh -c 'uiautomator dump /sdcard/d.xml >/dev/null; cat /sd
 adb -s SERIAL shell screenrecord --time-limit 5 /sdcard/r.mp4 && adb -s SERIAL pull /sdcard/r.mp4
 ```
 
-Кадр и XML не читай в контекст. Для дерева есть `adbm ui`, для кадра — `adbm look`.
+Do not read the frame or the XML into the context. Use `adbm ui` for the tree and `adbm look` for a frame.
 
-## Логи
+## Logs
 
 ```bash
 adb -s SERIAL logcat -b crash -d -t 50
@@ -89,12 +89,12 @@ adb -s SERIAL logcat --pid=$(adb -s SERIAL shell pidof <package>) -d -t 100
 adb -s SERIAL logcat -s "TAG:*" -d -t 30
 ```
 
-## Настройки экрана
+## Display settings
 
 ```bash
 adb -s SERIAL shell cmd uimode night yes|no|auto
-adb -s SERIAL shell settings put system font_scale 1.3     # 0.85, 1.0, 1.15, 1.3, можно 2.0
-adb -s SERIAL shell settings put global animator_duration_scale 0   # и window_, transition_
+adb -s SERIAL shell settings put system font_scale 1.3     # 0.85, 1.0, 1.15, 1.3, even 2.0
+adb -s SERIAL shell settings put global animator_duration_scale 0   # and window_, transition_
 adb -s SERIAL shell cmd overlay enable-exclusive --category com.android.internal.systemui.navbar.gestural   # API 29+
 adb -s SERIAL shell settings put secure high_text_contrast_enabled 1
 adb -s SERIAL shell settings put secure accessibility_display_inversion_enabled 1
@@ -102,12 +102,12 @@ adb -s SERIAL shell settings put secure enabled_accessibility_services \
   com.google.android.marvin.talkback/com.google.android.marvin.talkback.TalkBackService
 ```
 
-## Сбои adb
+## adb failures
 
-| Сбой | Что делать |
+| Failure | What to do |
 |---|---|
-| `device unauthorized` | подтвердить диалог на устройстве, затем `adb kill-server && adb start-server` |
-| `device offline` | `adb reconnect`, переподключить кабель |
-| `more than one device` | добавить `-s SERIAL` |
-| `uiautomator dump` пишет `could not get idle state` | на экране идёт анимация: `adbm prep`, затем повтор |
-| команда висит | `timeout 10 adb …` |
+| `device unauthorized` | confirm the dialog on the device, then `adb kill-server && adb start-server` |
+| `device offline` | `adb reconnect`, reconnect the cable |
+| `more than one device` | add `-s SERIAL` |
+| `uiautomator dump` prints `could not get idle state` | an animation is running: `adbm prep`, then retry |
+| a command hangs | `timeout 10 adb …` |

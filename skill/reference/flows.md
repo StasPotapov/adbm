@@ -1,46 +1,47 @@
-# Maestro flows для adbm
+# Maestro flows for adbm
 
-Maestro — открытый инструмент UI-тестов. Сценарий — YAML-файл с шагами.
-Maestro ищет элементы по дереву доступности и сам ждёт их появления.
-Во время прогона LLM не участвует, поэтому прогон одинаков на всех API.
+Maestro is an open-source UI testing tool. A flow is a YAML file with steps.
+Maestro finds elements by the accessibility tree and waits for them by itself.
+No LLM takes part in a run, so the run is the same on every API level.
 
-Документация команд: https://docs.maestro.dev/api-reference/commands
+Command reference: https://docs.maestro.dev/api-reference/commands
 
-## Где лежат
+## Where flows live
 
-`<проект>/.adbm/flows/<slug>.yaml` — в git проекта. Прогоны (`build/adbm/`) в git не идут.
+`<project>/.adbm/flows/<slug>.yaml` — in the project's git. Runs (`build/adbm/`) do not go to git.
 
-## Порядок
+## Steps
 
-1. Разведай экран: `adbm ui --api 35`, `adbm ui --find "<текст>"`.
-2. Напиши flow по правилам ниже.
-3. Прогони на одном API: `adbm run .adbm/flows/<slug>.yaml --api 35`.
-4. Если сбой — прочитай строку причины и `logs/ui-fail-*.txt`, исправь flow, повтори.
-5. Прогони на всех выбранных API: `adbm run … --api 28,33,35 --matrix "nav=…" "theme=…"`.
+1. Explore the screen: `adbm ui --api 35`, `adbm ui --find "<text>"`.
+2. Write the flow by the rules below.
+3. Run it on one API level: `adbm run .adbm/flows/<slug>.yaml --api 35`.
+4. On failure read the reason line and `logs/ui-fail-*.txt`, fix the flow, repeat.
+5. Run it on all chosen API levels: `adbm run … --api 28,33,35 --matrix "nav=…" "theme=…"`.
 
-## Правила
+## Rules
 
-- **Селекторы** берутся из `adbm ui`: `text`, `id`, `accessibilityText`.
-  Текст в `tapOn` — регулярное выражение: `"(Display|Экран).*"` покрывает две локали.
-  Точки, скобки и `+` в тексте экранируй: `"Цена \\(руб\\.\\)"`.
-- **Координаты** — только в процентах и с комментарием, почему без селектора:
+- **Selectors** come from `adbm ui`: `text`, `id`, `accessibilityText`.
+  Text in `tapOn` is a regular expression: `"(Display|Экран).*"` covers two locales.
+  Escape dots, brackets and `+` in the text: `"Price \\(USD\\.\\)"`.
+- **Coordinates** — only in percent and with a comment why there is no selector:
   ```yaml
-  # у кнопки нет текста и id, её рисует Canvas
+  # the button has no text and no id, it is drawn on a Canvas
   - tapOn:
       point: "50%,90%"
   ```
-- **Ожидания** — `extendedWaitUntil` или `assertVisible`, без `sleep`.
-  Перед каждым `takeScreenshot` ставь `waitForAnimationToEnd`.
-- **Состояние** — flow начинается с `launchApp: {clearState: true}`. Исключение — системные
-  приложения вроде «Настроек»: их данные не чистим, поэтому `stopApp` + `launchApp`.
-  Тему, навигацию, шрифт и demo mode во flow не ставь: их ставит `adbm prep` по `--matrix`.
-- **Имена кадров** — `takeScreenshot: "<N>-<состояние>"`, например `"3-sheet-expanded"`.
-  API, «до/после» и ячейку матрицы в имя не пиши: `adbm` раскладывает кадры по папкам сам.
-- **Один flow — одна проверка.** Темы и навигация задаются флагом `--matrix`, не копией файла.
-- **Прокрутка к элементу** — `scrollUntilVisible`, затем `tapOn`.
-- **Кириллица в поле** — `inputText: "Привет"`. `adbm type` кириллицу не умеет.
+- **Waits** — `extendedWaitUntil` or `assertVisible`, no `sleep`.
+  Put `waitForAnimationToEnd` before every `takeScreenshot`.
+  Give a long step an explicit `timeout:`: the `adbm run` watchdog sets its silence limit from it.
+- **State** — a flow starts with `launchApp: {clearState: true}`. The exception is system apps
+  such as Settings: do not clear their data, use `stopApp` + `launchApp`.
+  Do not set theme, navigation, font scale or demo mode in the flow: `adbm prep` sets them from `--matrix`.
+- **Frame names** — `takeScreenshot: "<N>-<state>"`, for example `"3-sheet-expanded"`.
+  Do not put the API level, "before/after" or the matrix cell into the name: `adbm` sorts frames into folders.
+- **One flow — one check.** Themes and navigation come from `--matrix`, not from copies of the file.
+- **Scroll to an element** — `scrollUntilVisible`, then `tapOn`.
+- **Non-Latin text in a field** — `inputText: "Привет"`. `adbm type` handles ASCII only.
 
-## Шаблон
+## Template
 
 ```yaml
 appId: com.example.app
@@ -48,9 +49,9 @@ appId: com.example.app
 - launchApp:
     clearState: true
 - extendedWaitUntil:
-    visible: "Каталог"
+    visible: "Catalog"
     timeout: 10000
-- tapOn: "Каталог"
+- tapOn: "Catalog"
 - scrollUntilVisible:
     element:
       id: "item_42"
@@ -59,52 +60,53 @@ appId: com.example.app
     id: "item_42"
 - waitForAnimationToEnd
 - takeScreenshot: "1-item-details"
-- tapOn: "Открыть штору"
+- tapOn: "Open sheet"
 - waitForAnimationToEnd
 - takeScreenshot: "2-sheet-peek"
 ```
 
-Переменные: `adbm run flow.yaml -e USER=test` → во flow `${USER}`.
+Variables: `adbm run flow.yaml -e USER=test` → `${USER}` in the flow.
 
-## Из ручной сессии
+## From a manual session
 
-Каждое `adbm launch`, `tap`, `type`, `key`, `swipe`, `shot` пишется в `build/adbm/session.jsonl`.
-`adbm save-flow <slug> --api 35` собирает flow от последнего `launch`:
-- `launch --clear` превращается в `clearState: true`, без `--clear` — в `false`;
-- текст селектора экранируется как регулярное выражение;
-- `tap --scroll N` превращается в `scrollUntilVisible` + `tapOn`;
-- тап по координатам — в `point` в процентах с пометкой `TODO`.
+Every `adbm launch`, `tap`, `type`, `key`, `swipe`, `shot` is logged to `~/.cache/adbm/session.jsonl`
+together with the project path. `adbm save-flow <slug> --api 35` builds a flow from the last `launch`
+of the current project:
+- `launch --clear` becomes `clearState: true`, without `--clear` — `false`;
+- selector text is escaped as a regular expression;
+- `tap --scroll N` becomes `scrollUntilVisible` + `tapOn`;
+- a tap by coordinates becomes a `point` in percent marked `TODO`.
 
-После `save-flow` прогони flow один раз и поправь селекторы.
+After `save-flow` run the flow once and fix the selectors.
 
-## Сбой
+## Failure
 
-`adbm run` печатает одну строку на ячейку: причину из Maestro и путь к логу.
-Рядом лежат `logs/ui-fail-<ячейка>.txt` — дерево экрана в момент сбоя,
-и `logs/crash-<ячейка>.txt`, если приложение упало (`logcat -b crash`).
-Чини flow по этим файлам. Скриншот сбоя не открывай, если дерево отвечает на вопрос.
+`adbm run` prints one line per cell: the reason from Maestro and the path to the log.
+Next to it are `logs/ui-fail-<cell>.txt` — the screen tree at the moment of failure —
+and `logs/crash-<cell>.txt` if the app crashed (`logcat -b crash`).
+Fix the flow from these files. Do not open the failure screenshot if the tree answers the question.
 
-## Защита от скриншотов
+## Screenshot protection
 
-Если окно приложения с `FLAG_SECURE`, Maestro на одних API падает с `Screenshot returned null`,
-а на других молча отдаёт чёрный кадр. `adbm run` отбрасывает пустые кадры, а ячейку
-с чёрными кадрами помечает сбоем с подсказкой. Лечение — выключить защиту первыми шагами flow:
+If the app window has `FLAG_SECURE`, Maestro fails on some API levels with `Screenshot returned null`
+and silently returns a black frame on others. `adbm run` drops empty frames and marks a cell
+with black frames as failed, with a hint. The fix is to turn the protection off as the first steps of the flow:
 
 ```yaml
-# приложение по умолчанию ставит FLAG_SECURE
-- tapOn: "Настройки"
-- tapOn: "Безопасность"
-- tapOn: "Защита скриншотов"
+# the app sets FLAG_SECURE by default
+- tapOn: "Settings"
+- tapOn: "Security"
+- tapOn: "Screenshot protection"
 - back
 - back
 ```
 
-Переключатели Compose идут в дереве без текста. `adbm ui` показывает их с подписью строки:
-`[22] View near="Запрет на скриншоты…" @958,1616 click,check`. Тапай по тексту строки.
+Compose switches have no text in the tree. `adbm ui` shows them with the row label:
+`[22] View near="Block screenshots…" @958,1616 click,check`. Tap the row text.
 
-## Параллель
+## Parallel runs
 
-`adbm run --api 28,33,35` запускает отдельный процесс `maestro --device <serial> test`
-на каждое устройство. Проверено 15.10.2026: три эмулятора идут ~18 с, по отдельности было бы ~49 с (13 + 20 + 16),
-кадры не путаются. `maestro --shard-all` не используем: на одном устройстве он упал,
-а папки называет `flow-shard-N` без привязки к устройству.
+`adbm run --api 28,33,35` starts a separate `maestro --device <serial> test` process
+per device. Tested on 15.10.2026: three emulators take ~18 s, one after another it would be ~49 s (13 + 20 + 16),
+and frames do not get mixed up. `maestro --shard-all` is not used: it failed on one device
+and names folders `flow-shard-N` without a link to the device.
