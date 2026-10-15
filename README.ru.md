@@ -46,7 +46,7 @@ index.html  manifest.js  00-summary.png
 
 ## Установка
 
-Нужны Android SDK, Python 3.9+ с Pillow, для сценариев — Maestro, для видео — ffmpeg.
+Нужны Android SDK, Python 3.9+ с Pillow, для сценариев и ввода не-ASCII через `adbm type` — Maestro, для видео — ffmpeg.
 
 ```bash
 git clone <repo> ~/dev/adbm

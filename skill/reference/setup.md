@@ -7,7 +7,7 @@
 | Android SDK: `platform-tools`, `emulator`, `cmdline-tools` | adb, emulators, `sdkmanager` and `avdmanager` | Android Studio → SDK Manager → SDK Tools |
 | Java 17+ | Maestro, `sdkmanager`, Gradle | `brew install openjdk@17` |
 | Python 3.9+ and Pillow | `adbm` itself: contact sheet, diff, `look` | `python3 -m pip install Pillow` |
-| Maestro | `adbm run` | `adbm setup --maestro --yes` (Homebrew `mobile-dev-inc/tap/maestro`) |
+| Maestro | `adbm run`, `adbm type` with non-ASCII text | `adbm setup --maestro --yes` (Homebrew `mobile-dev-inc/tap/maestro`) |
 | ffmpeg | contact sheet in `adbm record` | `brew install ffmpeg` |
 | Android CLI, optional | only `adbm annotate` | `adbm setup --android-cli --yes` (cask `android-cli`) |
 

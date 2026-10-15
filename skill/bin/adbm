@@ -1270,17 +1270,13 @@ def cmd_type(a):
     api, s = pick(a)[0]
     if re.fullmatch(r"[\x20-\x7e]*", a.text):
         ok, out = adb_ok(s, "input text " + shlex.quote(a.text.replace(" ", "%s")))
-    elif not a.unicode:
-        die("non-ASCII text needs ADB Keyboard (github.com/senzhk/ADBKeyBoard): adbm installs it for this input, "
-            "switches the keyboard, types and removes it again. Tell the person first, then add --unicode")
     else:
-        ok, out = type_unicode(api, s, a.text)
+        ok, out = type_maestro(s, a.text)
     if not ok:
         print(f"{api}: error — {trunc(out, 160)}")
         return 1
     session_log({"api": api, "op": "type", "text": a.text})
-    print(f"{api}: typed {len(a.text)} characters" + (" via ADB Keyboard (installed and removed)" if a.unicode and
-                                                       not re.fullmatch(r"[\x20-\x7e]*", a.text) else ""))
+    print(f"{api}: typed {len(a.text)} characters" + ("" if re.fullmatch(r"[\x20-\x7e]*", a.text) else " via Maestro"))
     return 0
 
 
@@ -1544,42 +1540,24 @@ def cmd_clear_field(a):
     return 0 if ok else 1
 
 
-ADBKBD_URL = "https://github.com/senzhk/ADBKeyBoard/releases/download/v2.5-dev/keyboardservice-debug.apk"
-ADBKBD_PKG = "com.android.adbkeyboard"
-ADBKBD_IME = "com.android.adbkeyboard/.AdbIME"
-
-
-def type_unicode(api, s, text):
-    """Type any text through ADB Keyboard: install it, switch the IME, type, switch back, uninstall."""
-    apk = os.path.join(CACHE, "adbkeyboard.apk")
-    if not os.path.exists(apk) and not ashell(s, f"pm path {ADBKBD_PKG}", timeout=15).startswith("package:"):
-        os.makedirs(CACHE, exist_ok=True)
-        code, _, err = sh(["curl", "-fsSL", "-o", apk, ADBKBD_URL], timeout=120)
-        if code != 0:
-            if os.path.exists(apk):
-                os.remove(apk)
-            die(f"ADB Keyboard download failed: {err.strip()[:160]}")
-    prev = ashell(s, "settings get secure default_input_method", timeout=10)
-    had = ashell(s, f"pm path {ADBKBD_PKG}", timeout=15).startswith("package:")
-    if not had:
-        code, out, err = adb(s, "install", "-r", "-t", apk, timeout=120)
-        if code != 0 or "Success" not in out:
-            die(f"ADB Keyboard install failed: {(out + err).strip()[-160:]}")
+def type_maestro(serial, text):
+    """Non-ASCII text: `input text` cannot type it, Maestro `inputText` can (checked on API 28, 33, 35)."""
+    mae = shutil.which("maestro")
+    if not mae:
+        die("non-ASCII text is typed through Maestro, and it is not installed — adbm setup --maestro --yes")
+    focus = ashell(serial, "dumpsys window | grep -m1 mCurrentFocus", timeout=15)
+    m = re.search(r"\s([\w.]+)/", focus)
+    d = tempfile.mkdtemp(prefix="adbm-type-")
+    flow = os.path.join(d, "type.yaml")
     try:
-        adb_ok(s, f"ime enable {ADBKBD_IME}")
-        ok, out = adb_ok(s, f"ime set {ADBKBD_IME}")
-        if not ok:
-            die(f"cannot switch to ADB Keyboard: {trunc(out, 160)}")
-        time.sleep(0.5)
-        b64 = __import__("base64").b64encode(text.encode("utf-8")).decode()
-        ok, out = adb_ok(s, f"am broadcast -a ADB_INPUT_B64 --es msg {b64}")
-        time.sleep(0.3)
+        # appId is required by the flow format; without launchApp Maestro does not touch the app
+        with open(flow, "w") as f:
+            f.write(f"appId: {m.group(1) if m else 'android'}\n---\n"
+                    f"- inputText: {json.dumps(text, ensure_ascii=False)}\n")
+        code, out, err = sh([mae, "--device", serial, "test", flow, "--no-ansi"], timeout=180)
     finally:
-        if prev and prev != "null":
-            adb_ok(s, f"ime set {shlex.quote(prev)}")
-        if not had:
-            adb(s, "uninstall", ADBKBD_PKG, timeout=60)
-    return ok and "result=0" in out, out
+        shutil.rmtree(d, ignore_errors=True)
+    return code == 0, "" if code == 0 else maestro_failure(out + err)
 
 
 # ---------------------------------------------------------------- commands: frames
@@ -2535,7 +2513,7 @@ def cmd_clean(a):
     old = [p for p in runs[:-a.runs] if p != cur] if a.runs > 0 else [p for p in runs if p != cur]
     todo = [(p, tree_size(p)) for p in old]
     if a.cache:
-        for pat in ("look", "logs", "shots", "pull", "ui-*.json", "annotate-*.txt", "emu-*.log", "adbkeyboard.apk"):
+        for pat in ("look", "logs", "shots", "pull", "ui-*.json", "annotate-*.txt", "emu-*.log"):
             todo += [(p, tree_size(p) if os.path.isdir(p) else os.path.getsize(p))
                      for p in glob.glob(os.path.join(CACHE, pat))]
     if not todo:
@@ -2877,10 +2855,8 @@ def main():
     p.add_argument("package")
     p.add_argument("--clear", action="store_true", help="pm clear before launch")
     p.add_argument("--stop", action="store_true", help="force-stop before launch")
-    p = add("type", cmd_type, "type text into the focused field", "one")
+    p = add("type", cmd_type, "type text into the focused field; non-ASCII goes through Maestro", "one")
     p.add_argument("text")
-    p.add_argument("--unicode", action="store_true",
-                   help="non-ASCII: install ADB Keyboard for this input and remove it after — tell the person first")
     p = add("clear-field", cmd_clear_field, "delete the text of the focused field", "one")
     p = add("key", cmd_key, "key: back, home, enter, escape, tab, up/down/left/right, wake, sleep, power, "
             "volume-up/down, notifications, hide-keyboard, or a keycode", "multi")

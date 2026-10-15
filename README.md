@@ -47,7 +47,7 @@ index.html  manifest.js  00-summary.png
 
 ## Install
 
-Requires the Android SDK and Python 3.9+ with Pillow. Scenarios need Maestro, video needs ffmpeg.
+Requires the Android SDK and Python 3.9+ with Pillow. Scenarios and non-ASCII `adbm type` need Maestro, video needs ffmpeg.
 
 ```bash
 git clone <repo> ~/dev/adbm

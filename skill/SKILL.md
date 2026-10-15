@@ -102,9 +102,8 @@ It writes the verdict to `<run>/notes.md` and returns up to 10 lines. Then `boar
 
 ## Limitations
 
-- **Non-Latin text:** `input text` cannot type it; in a flow Maestro `inputText` can. By hand,
-  `type --unicode` installs ADB Keyboard (a third-party APK from GitHub), types, restores the keyboard
-  and removes the APK. **Tell the person before the first such call.**
+- **Non-Latin text:** `input text` cannot type it, so `adbm type` sends it through Maestro `inputText`
+  (~10 s instead of ~1 s). In a flow write `inputText` as usual.
 - **`FLAG_SECURE`** (banks, password managers): empty or black frames — see `reference/troubleshooting.md`.
 - API 28: no gesture navigation (`nav=gestural` cells are skipped); dark theme does not reach its system UI.
 - A physical device is picked only when no emulator has that API level: address it with `--serial`.
