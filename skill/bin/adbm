@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """adbm — Android Debug Bridge Matrix.
 
-CLI для проверки Android-приложений агентом: эмуляторы адресуются по API,
-сценарии гоняет Maestro, кадры раскладываются по папкам прогона,
-итог — HTML-борд и PNG-коллаж «до | после». Картинки в контекст агента
-не попадают: навигация идёт по тексту дерева UI.
+CLI for checking Android apps as an agent: emulators are addressed by API level,
+Maestro runs the flows, frames are sorted into run folders,
+the result is an HTML board and a "before | after" PNG contact sheet. Images do not
+enter the agent's context: navigation goes by the UI tree text.
 
-Зависимости: Python 3.9+, Pillow (коллаж, дифф, look), adb.
-Для сценариев — Maestro. Для record — ffmpeg.
+Requirements: Python 3.9+, Pillow (contact sheet, diff, look), adb.
+Maestro for flows. ffmpeg for record.
 """
 import argparse
 import concurrent.futures as cf
@@ -46,21 +46,21 @@ LOOK_W = {"normal": 540, "small": 360}
 _lock = threading.Lock()
 
 
-# ---------------------------------------------------------------- утилиты
+# ---------------------------------------------------------------- utilities
 
 def die(msg, code=1):
-    print(f"ошибка: {msg}", file=sys.stderr)
+    print(f"error: {msg}", file=sys.stderr)
     sys.exit(code)
 
 
 def sh(cmd, timeout=120, check=False, binary=False, env=None):
-    """Запуск команды. Возвращает (код, stdout, stderr)."""
+    """Run a command. Returns (code, stdout, stderr)."""
     try:
         p = subprocess.run(cmd, capture_output=True, timeout=timeout, env=env)
     except FileNotFoundError:
-        return 127, b"" if binary else "", f"не найдено: {cmd[0]}"
+        return 127, b"" if binary else "", f"not found: {cmd[0]}"
     except subprocess.TimeoutExpired:
-        return 124, b"" if binary else "", f"таймаут {timeout} с: {' '.join(cmd)}"
+        return 124, b"" if binary else "", f"timeout {timeout} s: {' '.join(cmd)}"
     out = p.stdout if binary else p.stdout.decode("utf-8", "replace")
     err = p.stderr.decode("utf-8", "replace")
     if check and p.returncode != 0:
@@ -81,7 +81,7 @@ def sdk_root():
 
 
 def sdk_tool(rel, name):
-    """Инструмент из SDK, затем из PATH."""
+    """A tool from the SDK, then from PATH."""
     root = sdk_root()
     if root:
         p = os.path.join(root, rel, name)
@@ -93,7 +93,7 @@ def sdk_tool(rel, name):
 def adb_bin():
     p = sdk_tool("platform-tools", "adb")
     if not p:
-        die("adb не найден — запусти `adbm doctor`")
+        die("adb not found — run `adbm doctor`")
     return p
 
 
@@ -113,7 +113,7 @@ def parse_apis(s):
         part = part.strip()
         if part:
             if not part.isdigit():
-                die(f"API должен быть числом: {part}")
+                die(f"API must be a number: {part}")
             out.append(int(part))
     return out
 
@@ -143,14 +143,14 @@ def rel(p):
 
 
 def human_size(n):
-    for u in ("Б", "КБ", "МБ", "ГБ"):
+    for u in ("B", "KB", "MB", "GB"):
         if n < 1024:
             return f"{n:.0f} {u}"
         n /= 1024
-    return f"{n:.1f} ТБ"
+    return f"{n:.1f} TB"
 
 
-# ---------------------------------------------------------------- прогон (run dir)
+# ---------------------------------------------------------------- run dir
 
 def current_run(create=True, slug="manual", new=False):
     base = runs_dir()
@@ -171,7 +171,7 @@ def new_run(slug):
     name = dt.datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + slugify(slug)
     p = os.path.join(base, name)
     os.makedirs(os.path.join(p, "logs"), exist_ok=True)
-    # что стоит на устройствах, не меняется от новой папки прогона
+    # what is installed on the devices does not change with a new run folder
     for f in (".as", "builds.json"):
         if os.path.exists(os.path.join(prev, f)):
             shutil.copy(os.path.join(prev, f), os.path.join(p, f))
@@ -185,7 +185,7 @@ def new_run(slug):
 
 
 def scratch():
-    """Папка для служебных файлов: текущий прогон, а вне прогона — кэш, без build/adbm в проекте."""
+    """Folder for service files: the current run, outside a run the cache, so no build/adbm in the project."""
     p = current_run(create=False) or CACHE
     os.makedirs(os.path.join(p, "logs"), exist_ok=True)
     return p
@@ -195,7 +195,7 @@ def resolve_run(arg, create=True, slug="manual"):
     if arg:
         p = arg if os.path.isabs(arg) or os.path.exists(arg) else os.path.join(runs_dir(), arg)
         if not os.path.isdir(p):
-            die(f"нет папки прогона: {arg}")
+            die(f"no run folder: {arg}")
         return os.path.abspath(p)
     return current_run(create=create, slug=slug)
 
@@ -216,14 +216,14 @@ def stats_add(run, **inc):
 
 
 def session_log(entry):
-    """Журнал ручных действий — источник для save-flow."""
+    """Journal of manual actions — the source for save-flow."""
     os.makedirs(CACHE, exist_ok=True)
     entry = {"t": time.time(), "project": project_root(), **entry}
     with _lock, open(os.path.join(CACHE, "session.jsonl"), "a") as f:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
-# ---------------------------------------------------------------- устройства
+# ---------------------------------------------------------------- devices
 
 def avd_index():
     """AVD → {api, path, config}."""
@@ -254,7 +254,7 @@ def read_ini(p):
 
 
 def list_devices():
-    """Подключённые устройства в состоянии device."""
+    """Connected devices in the device state."""
     _, out, _ = sh([adb_bin(), "devices"], timeout=15)
     serials = []
     for line in out.splitlines()[1:]:
@@ -278,13 +278,13 @@ def list_devices():
 
 
 def pick(args, multi=False):
-    """Возвращает [(api, serial)] по --api / --serial."""
+    """Returns [(api, serial)] for --api / --serial."""
     if getattr(args, "serial", None):
         api = ashell(args.serial, "getprop ro.build.version.sdk", timeout=15)
         return [(int(api) if api.isdigit() else 0, args.serial)]
     devs = list_devices()
     if not devs:
-        die("нет подключённых устройств — `adbm devices --start <API>`")
+        die("no devices connected — `adbm devices --start <API>`")
     apis = parse_apis(getattr(args, "api", None))
     if not apis:
         emus = [d for d in devs if d["emulator"]]
@@ -295,21 +295,21 @@ def pick(args, multi=False):
         if any(d["api"] == 35 and d["emulator"] for d in devs):
             apis = [35]
         else:
-            die("укажи --api: запущено " + ", ".join(f"{d['api']}" for d in devs))
+            die("pass --api: running " + ", ".join(f"{d['api']}" for d in devs))
     res = []
     for a in apis:
         cand = [d for d in devs if d["api"] == a]
         cand.sort(key=lambda d: not d["emulator"])
         if not cand:
-            die(f"нет устройства с API {a} — `adbm devices --start {a}`")
+            die(f"no device with API {a} — `adbm devices --start {a}`")
         res.append((a, cand[0]["serial"]))
     if not multi and len(res) > 1:
-        die("эта команда работает с одним устройством — укажи одно --api")
+        die("this command works with one device — pass a single --api")
     return res
 
 
 def parallel(targets, fn):
-    """fn(api, serial) на всех устройствах параллельно, результат в порядке targets."""
+    """fn(api, serial) on all devices in parallel, results in the order of targets."""
     if len(targets) == 1:
         return [fn(*targets[0])]
     with cf.ThreadPoolExecutor(len(targets)) as ex:
@@ -323,7 +323,7 @@ def screen_size(serial):
 
 
 def frame_problem(path):
-    """Пустой или битый PNG → 'broken', почти сплошной чёрный → 'black', иначе None."""
+    """Empty or broken PNG → 'broken', almost solid black → 'black', else None."""
     try:
         if os.path.getsize(path) == 0:
             return "broken"
@@ -335,17 +335,17 @@ def frame_problem(path):
         return "broken"
 
 
-SECURE_HINT = "кадр чёрный — вероятно, окно с FLAG_SECURE (защита от скриншотов): выключи её в приложении"
+SECURE_HINT = "black frame — probably a window with FLAG_SECURE (screenshot protection): turn it off in the app"
 
 
 def screencap(serial):
     code, data, err = adb(serial, "exec-out", "screencap", "-p", timeout=30, binary=True)
     if code != 0 or not data.startswith(b"\x89PNG"):
-        die(f"[{serial}] screencap не удался: {err.strip()}")
+        die(f"[{serial}] screencap failed: {err.strip()}")
     return data
 
 
-# ---------------------------------------------------------------- дерево UI
+# ---------------------------------------------------------------- UI tree
 
 BOUNDS = re.compile(r"\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]")
 
@@ -360,7 +360,7 @@ def dump_xml(serial, tries=3):
             return out[out.index("<?xml") if "<?xml" in out else out.index("<hierarchy"):]
         last = (out + err).strip()[:200]
         time.sleep(1)
-    die(f"[{serial}] uiautomator dump не удался: {last}")
+    die(f"[{serial}] uiautomator dump failed: {last}")
 
 
 def parse_nodes(xml, include_system=False):
@@ -391,7 +391,7 @@ def parse_nodes(xml, include_system=False):
             "text": text, "desc": desc, "id": rid.split(":id/")[-1] if rid else "", "rid": rid,
             "bounds": [x0, y0, x1, y1], "cx": (x0 + x1) // 2, "cy": (y0 + y1) // 2, "flags": flags,
         })
-    # у переключателей Compose нет текста: подпись берём у ближайшего текста в той же строке
+    # Compose switches have no text: take the label from the nearest text in the same row
     texts = [n for n in nodes if n["text"]]
     for nd in nodes:
         if "check" in nd["flags"] and not (nd["text"] or nd["desc"] or nd["id"]):
@@ -431,7 +431,7 @@ def ui_snapshot(serial, include_system=False):
 
 
 def find_nodes(nodes, sel):
-    """Точное совпадение text → desc → id, затем подстрока без учёта регистра."""
+    """Exact match text → desc → id, then a case-insensitive substring."""
     for key in ("text", "desc"):
         hit = [n for n in nodes if n[key] == sel]
         if hit:
@@ -443,27 +443,27 @@ def find_nodes(nodes, sel):
     return [n for n in nodes if low in n["text"].lower() or low in n["desc"].lower()]
 
 
-# ---------------------------------------------------------------- команды: окружение
+# ---------------------------------------------------------------- commands: environment
 
 def cmd_doctor(a):
     rows = []
 
     def row(ok, name, detail, fix=""):
-        rows.append(("ок" if ok is True else ("нет" if ok is False else "!"), name, detail, fix))
+        rows.append(("ok" if ok is True else ("missing" if ok is False else "!"), name, detail, fix))
 
     root = sdk_root()
     if root and not os.path.isdir(root):
-        row(False, "Android SDK", f"{root} — папки нет", "проверь ANDROID_HOME")
+        row(False, "Android SDK", f"{root} — no such folder", "check ANDROID_HOME")
         root = None
     else:
-        row(bool(root), "Android SDK", root or "ANDROID_HOME не задан, стандартных путей нет",
-        "поставь Android Studio или cmdline-tools, задай ANDROID_HOME")
+        row(bool(root), "Android SDK", root or "ANDROID_HOME is not set and no standard path exists",
+        "install Android Studio or cmdline-tools, set ANDROID_HOME")
     adbp = sdk_tool("platform-tools", "adb")
     row(bool(adbp), "adb", adbp or "-", "sdkmanager platform-tools")
     emu = sdk_tool("emulator", "emulator")
     if emu:
         inpath = shutil.which("emulator")
-        row(True if inpath else None, "emulator", emu + ("" if inpath else " (не в PATH — adbm найдёт сам)"))
+        row(True if inpath else None, "emulator", emu + ("" if inpath else " (not in PATH — adbm finds it itself)"))
     else:
         row(False, "emulator", "-", "sdkmanager emulator")
     sdkm = sdk_tool("cmdline-tools/latest/bin", "sdkmanager")
@@ -472,31 +472,31 @@ def cmd_doctor(a):
     code, out, err = sh(["java", "-version"], timeout=20)
     m = re.search(r'version "(\d+)', out + err)
     jv = int(m.group(1)) if m else 0
-    row(jv >= 17, "Java 17+", f"java {jv}" if jv else "java не найдена", "brew install openjdk@17")
+    row(jv >= 17, "Java 17+", f"java {jv}" if jv else "java not found", "brew install openjdk@17")
     mae = shutil.which("maestro")
     if mae:
         _, o, _ = sh([mae, "--version"], timeout=60)
         row(True, "Maestro", (o.strip().splitlines() or ["?"])[-1])
     else:
-        row(False, "Maestro", "нужен для adbm run", "adbm setup --maestro --yes")
+        row(False, "Maestro", "needed for adbm run", "adbm setup --maestro --yes")
     try:
         import PIL
         row(True, "Pillow", PIL.__version__)
     except ImportError:
-        row(False, "Pillow", "нужен для коллажа, diff, look", "python3 -m pip install Pillow")
+        row(False, "Pillow", "needed for contact sheet, diff, look", "python3 -m pip install Pillow")
     ff = shutil.which("ffmpeg")
-    row(bool(ff) or None, "ffmpeg", ff or "нужен только для record", "brew install ffmpeg")
+    row(bool(ff) or None, "ffmpeg", ff or "needed only for record", "brew install ffmpeg")
     acli = shutil.which("android")
-    row(True if acli else None, "Android CLI (необяз.)", acli or "нужен только для annotate",
+    row(True if acli else None, "Android CLI (optional)", acli or "needed only for annotate",
         "adbm setup --android-cli --yes")
-    # образы и AVD
+    # system images and AVDs
     if root:
         imgs = sorted(glob.glob(os.path.join(root, "system-images", "android-*", "*", "*")))
         names = [os.path.relpath(p, os.path.join(root, "system-images")) for p in imgs]
-        row(bool(names) or None, "Образы", ", ".join(names) or "нет", "adbm setup --api 35")
+        row(bool(names) or None, "System images", ", ".join(names) or "none", "adbm setup --api 35")
     avds = avd_index()
     if not avds:
-        row(None, "AVD", "нет ни одного", "adbm setup --api 35 --yes")
+        row(None, "AVD", "none", "adbm setup --api 35 --yes")
     for name, info in avds.items():
         cfg = info["config"]
         bad = []
@@ -518,13 +518,13 @@ def cmd_doctor(a):
     w = [max(len(r[i]) for r in rows) for i in range(3)]
     for r in rows:
         line = f"{r[0]:<{w[0]}}  {r[1]:<{w[1]}}  {r[2]}"
-        if r[3] and r[0] != "ок":
+        if r[3] and r[0] != "ok":
             line += f"  → {r[3]}"
         print(line)
-    missing = [r for r in rows if r[0] == "нет"]
+    missing = [r for r in rows if r[0] == "missing"]
     warn = [r for r in rows if r[0] == "!"]
-    print(f"\nитог: ок {len(rows) - len(missing) - len(warn)}, предупреждений {len(warn)}, нет {len(missing)}"
-          + (" — чинить: " + ", ".join(r[1] for r in missing) if missing else ""))
+    print(f"\nsummary: ok {len(rows) - len(missing) - len(warn)}, warnings {len(warn)}, missing {len(missing)}"
+          + (" — fix: " + ", ".join(r[1] for r in missing) if missing else ""))
     return 1 if missing else 0
 
 
@@ -557,7 +557,7 @@ def tune_config(path):
 
 
 def cmd_setup(a):
-    steps = []  # (описание, команда | callable)
+    steps = []  # (description, command | callable)
     root = sdk_root()
     sdkm = sdk_tool("cmdline-tools/latest/bin", "sdkmanager")
     avdm = sdk_tool("cmdline-tools/latest/bin", "avdmanager")
@@ -568,37 +568,37 @@ def cmd_setup(a):
         pkg = f"system-images;android-{api};google_apis;{abi()}"
         if not have_img:
             if not sdkm:
-                die("нет sdkmanager — поставь Command-line Tools (см. `adbm doctor`)")
-            steps.append((f"образ API {api}", [sdkm, pkg]))
+                die("no sdkmanager — install Command-line Tools (see `adbm doctor`)")
+            steps.append((f"system image API {api}", [sdkm, pkg]))
         else:
             pkg = "system-images;" + ";".join(os.path.relpath(have_img[0], os.path.join(root, "system-images")).split(os.sep))
         if not any(i["api"] == api for i in avds.values()):
             name = f"adbm_API_{api}"
             if not avdm:
-                die("нет avdmanager — поставь Command-line Tools (см. `adbm doctor`)")
+                die("no avdmanager — install Command-line Tools (see `adbm doctor`)")
             steps.append((f"AVD {name}", ["sh", "-c", f"echo no | {shlex.quote(avdm)} create avd -n {name} -k {shlex.quote(pkg)} -d pixel_8"]))
-            steps.append((f"тюнинг {name}", lambda n=name: tune_config(avd_index()[n]["path"])))
+            steps.append((f"tune {name}", lambda n=name: tune_config(avd_index()[n]["path"])))
     if a.tune:
         for name, info in avds.items():
             if a.api and info["api"] not in parse_apis(a.api):
                 continue
             if name in running:
-                print(f"пропуск {name}: эмулятор запущен, останови его и повтори")
+                print(f"skip {name}: the emulator is running, stop it and retry")
                 continue
-            steps.append((f"тюнинг {name} ({', '.join(f'{k}={v}' for k, v in TUNE.items())})",
+            steps.append((f"tune {name} ({', '.join(f'{k}={v}' for k, v in TUNE.items())})",
                           lambda p=info["path"]: tune_config(p)))
     if a.maestro and not shutil.which("maestro"):
         steps.append(("Maestro", ["brew", "install", "mobile-dev-inc/tap/maestro"]))
     if a.android_cli and not shutil.which("android"):
-        steps.append(("Android CLI (adbm вызывает его с --no-metrics; `android init` не запускай)",
+        steps.append(("Android CLI (adbm calls it with --no-metrics; do not run `android init`)",
                       ["brew", "install", "--cask", "android-cli"]))
     if not steps:
-        print("делать нечего: всё уже стоит")
+        print("nothing to do: everything is installed")
         return 0
     for d, c in steps:
-        print(("• " if a.yes else "план: ") + d + ("" if callable(c) else "  $ " + " ".join(shlex.quote(x) for x in c)))
+        print(("• " if a.yes else "plan: ") + d + ("" if callable(c) else "  $ " + " ".join(shlex.quote(x) for x in c)))
     if not a.yes:
-        print("\nэто план. Выполнить: та же команда с --yes")
+        print("\nthis is a plan. To run it: the same command with --yes")
         return 0
     for d, c in steps:
         if callable(c):
@@ -606,15 +606,15 @@ def cmd_setup(a):
         else:
             code = subprocess.call(c)
             if code != 0:
-                die(f"шаг «{d}» упал с кодом {code}")
-        print(f"готово: {d}")
+                die(f"step \"{d}\" failed with code {code}")
+        print(f"done: {d}")
     return 0
 
 
 def emulator_start(avd, headless):
     emu = sdk_tool("emulator", "emulator")
     if not emu:
-        die("нет emulator — `adbm doctor`")
+        die("no emulator — `adbm doctor`")
     os.makedirs(CACHE, exist_ok=True)
     log = open(os.path.join(CACHE, f"emu-{avd}.log"), "w")
     cmd = [emu, "-avd", avd, "-no-snapshot-save", "-no-boot-anim"]
@@ -648,29 +648,29 @@ def cmd_devices(a):
                 continue
             names = [n for n, i in avds.items() if i["api"] == api]
             if not names:
-                print(f"API {api}: нет AVD → adbm setup --api {api} --yes")
+                print(f"API {api}: no AVD → adbm setup --api {api} --yes")
                 continue
             emulator_start(names[0], a.headless)
             todo.append(names[0])
-            print(f"API {api}: запускаю {names[0]}")
+            print(f"API {api}: starting {names[0]}")
         if todo:
             with cf.ThreadPoolExecutor(len(todo)) as ex:
                 for avd, s in zip(todo, ex.map(wait_boot, todo)):
-                    print(f"{avd}: " + (f"загрузился → {s}" if s else f"не загрузился за 5 мин, лог {CACHE}/emu-{avd}.log"))
+                    print(f"{avd}: " + (f"booted → {s}" if s else f"did not boot in 5 min, log {CACHE}/emu-{avd}.log"))
     devs = list_devices()
     if not devs:
-        print("нет устройств")
+        print("no devices")
         return 1
-    print("API  serial                 имя                экран")
+    print("API  serial                 name               screen")
     for d in devs:
         w, h = screen_size(d["serial"])
         dens = ashell(d["serial"], "wm density").split()[-1] if d["api"] else "?"
-        kind = "" if d["emulator"] else "  (физ.)"
+        kind = "" if d["emulator"] else "  (physical)"
         print(f"{d['api']:<4} {d['serial'][:22]:<22} {d['name'][:18]:<18} {w}x{h} {dens}dpi{kind}")
     return 0
 
 
-# ---------------------------------------------------------------- команды: подготовка
+# ---------------------------------------------------------------- commands: preparation
 
 DEMO = [
     "settings put global sysui_demo_allowed 1",
@@ -691,8 +691,8 @@ def prep_device(api, serial, theme=None, nav=None, font_scale=None, locale=None,
         cmds += ["am broadcast -a com.android.systemui.demo -e command exit",
                  "settings put system font_scale 1.0"]
         ashell(serial, "; ".join(c + " >/dev/null" for c in cmds))
-        return "сброшено: анимации 1, demo mode выкл, шрифт 1.0"
-    # тема и навбар перезапускают системный UI и сбрасывают demo mode, поэтому demo mode — последним
+        return "reset: animations 1, demo mode off, font scale 1.0"
+    # theme and navbar changes restart the system UI and drop demo mode, so demo mode goes last
     cmds = [f"settings put global {k} 0" for k in
             ("window_animation_scale", "transition_animation_scale", "animator_duration_scale")]
     cmds.append("settings put secure show_ime_with_hard_keyboard 0")
@@ -702,28 +702,28 @@ def prep_device(api, serial, theme=None, nav=None, font_scale=None, locale=None,
         cmds.append(f"settings put system font_scale {font_scale}")
     if nav:
         if api < 29:
-            notes.append(f"nav={nav} пропущен: API {api} < 29")
+            notes.append(f"nav={nav} skipped: API {api} < 29")
         else:
             cmds.append(f"cmd overlay enable-exclusive --category com.android.internal.systemui.navbar.{nav}")
     if locale:
         if api >= 33 and app:
             cmds.append(f"cmd locale set-app-locales {app} --locales {locale}")
         else:
-            notes.append("locale пропущен: нужен API 33+ и --app <пакет>")
+            notes.append("locale skipped: needs API 33+ and --app <package>")
     ashell(serial, "; ".join(c + " >/dev/null 2>&1" for c in cmds), timeout=60)
     if nav and api >= 29:
         time.sleep(3)
     elif theme or font_scale:
         time.sleep(1.5)
-    # после смены темы статус-бар пересоздаётся, а demo mode считается включённым и повторный enter
-    # игнорируется (видно на API 28) — поэтому сначала exit
+    # after a theme change the status bar is recreated while demo mode still counts as on, so a
+    # repeated enter is ignored (seen on API 28) — hence exit first
     demo = "; ".join(c + " >/dev/null 2>&1" for c in
                      ["am broadcast -a com.android.systemui.demo -e command exit"] + DEMO)
     ashell(serial, demo, timeout=60)
-    s = "анимации 0, demo mode"
-    s += f", тема {theme}" if theme else ""
+    s = "animations 0, demo mode"
+    s += f", theme {theme}" if theme else ""
     s += f", nav {nav}" if nav and api >= 29 else ""
-    s += f", шрифт {font_scale}" if font_scale else ""
+    s += f", font scale {font_scale}" if font_scale else ""
     s += f", locale {locale}" if locale and api >= 33 and app else ""
     return s + ("; " + "; ".join(notes) if notes else "")
 
@@ -737,7 +737,7 @@ def cmd_prep(a):
 
 
 def apk_info(apk):
-    """{'package', 'min_sdk', 'target_sdk'} из aapt dump badging; чего нет — None."""
+    """{'package', 'min_sdk', 'target_sdk'} from aapt dump badging; missing ones are None."""
     info = {"package": None, "min_sdk": None, "target_sdk": None}
     root = sdk_root()
     tools = sorted(glob.glob(os.path.join(root, "build-tools", "*", "aapt"))) if root else []
@@ -753,7 +753,7 @@ def apk_info(apk):
 
 def cmd_install(a):
     if not os.path.exists(a.apk):
-        die(f"нет файла {a.apk}")
+        die(f"no such file {a.apk}")
     targets = pick(a, multi=True)
     run = current_run(create=False) or CACHE
     os.makedirs(run, exist_ok=True)
@@ -761,10 +761,10 @@ def cmd_install(a):
     pkg = info["package"]
     low = [t for t in targets if info["min_sdk"] and t[0] < info["min_sdk"]]
     for api, _ in low:
-        print(f"{api}: пропуск — у APK minSdk {info['min_sdk']}")
+        print(f"{api}: skipped — the APK has minSdk {info['min_sdk']}")
     targets = [t for t in targets if t not in low]
     if not targets:
-        die(f"нет устройств с API ≥ {info['min_sdk']} (minSdk APK)")
+        die(f"no devices with API ≥ {info['min_sdk']} (APK minSdk)")
     h = hashlib.sha1()
     with open(a.apk, "rb") as f:
         for chunk in iter(lambda: f.read(1 << 20), b""):
@@ -787,7 +787,7 @@ def cmd_install(a):
     json.dump(meta, open(meta_p, "w"), ensure_ascii=False, indent=1)
     bad = 0
     for (api, s), (ok, msg) in zip(targets, res):
-        print(f"{api}: " + ("установлен" if ok else f"ошибка — {msg}"))
+        print(f"{api}: " + ("installed" if ok else f"error — {msg}"))
         bad += not ok
     sdk = f" minSdk {info['min_sdk']} targetSdk {info['target_sdk']}" if info["min_sdk"] else ""
     print(f"{a.as_}: {os.path.basename(a.apk)} {pkg or ''}{sdk} sha1 {sha}")
@@ -796,7 +796,7 @@ def cmd_install(a):
     return 1 if bad else 0
 
 
-# ---------------------------------------------------------------- команды: навигация
+# ---------------------------------------------------------------- commands: navigation
 
 def cmd_ui(a):
     api, s = pick(a)[0]
@@ -808,15 +808,15 @@ def cmd_ui(a):
     if a.find:
         nodes = find_nodes(nodes, a.find)
         if not nodes:
-            print(f'не найдено: "{a.find}"')
-            print(f"полный дамп: {rel(full)}")
+            print(f'not found: "{a.find}"')
+            print(f"full dump: {rel(full)}")
             return 1
     for nd in nodes[: a.limit]:
         print(fmt_node(nd))
     if len(nodes) > a.limit:
-        print(f"… ещё {len(nodes) - a.limit}, сузь через --find")
+        print(f"… {len(nodes) - a.limit} more, narrow with --find")
     w, h = screen_size(s)
-    print(f"# API {api} {w}x{h} · узлов {len(nodes)} · xml {len(xml)} Б → {rel(full)}")
+    print(f"# API {api} {w}x{h} · nodes {len(nodes)} · xml {len(xml)} B → {rel(full)}")
     return 0
 
 
@@ -831,7 +831,7 @@ def cmd_tap(a):
         x, y = map(int, sel.split(","))
         tap_xy(s, x, y)
         session_log({"api": api, "op": "tap_xy", "x": x, "y": y, "screen": screen_size(s)})
-        print(f"{api}: тап {x},{y}")
+        print(f"{api}: tap {x},{y}")
         return 0
     if sel.startswith("#"):
         return annotate_tap(api, s, sel[1:])
@@ -841,10 +841,10 @@ def cmd_tap(a):
             nodes = json.load(open(os.path.join(CACHE, f"ui-{s}.json")))
             nd = nodes[idx]
         except Exception:
-            die("нет свежего `adbm ui` для этого устройства")
+            die("no fresh `adbm ui` for this device")
         tap_xy(s, nd["cx"], nd["cy"])
         session_log({"api": api, "op": "tap", "text": nd["text"], "desc": nd["desc"], "id": nd["id"]})
-        print(f"{api}: тап {fmt_node(nd)}")
+        print(f"{api}: tap {fmt_node(nd)}")
         return 0
     scrolls = 0
     nodes = []
@@ -864,16 +864,16 @@ def cmd_tap(a):
             key = "text" if nd["text"] == sel else ("desc" if nd["desc"] == sel else ("id" if nd["id"] == sel else "text"))
             session_log({"api": api, "op": "tap", "by": key, "sel": sel, "scrolled": scrolls,
                          "text": nd["text"], "desc": nd["desc"], "id": nd["id"]})
-            more = f" (совпадений {len(hit)}, взял {min(a.nth, len(hit) - 1)})" if len(hit) > 1 else ""
-            print(f"{api}: тап {fmt_node(nd)}{more}")
+            more = f" (matches {len(hit)}, took {min(a.nth, len(hit) - 1)})" if len(hit) > 1 else ""
+            print(f"{api}: tap {fmt_node(nd)}{more}")
             if a.wait:
                 time.sleep(a.wait)
             return 0
         time.sleep(1)
     words = [w for w in re.split(r"\W+", sel.lower()) if len(w) > 2]
     near = [n for n in nodes if any(w[:4] in (n["text"] + n["desc"] + n["id"]).lower() for w in words)][:8]
-    print(f'{api}: не найдено "{sel}" (попыток {a.retries}, прокруток {scrolls}). '
-          + ("Похожие:" if near else f"Похожих нет, узлов на экране {len(nodes)} — смотри adbm ui"))
+    print(f'{api}: not found "{sel}" (tries {a.retries}, scrolls {scrolls}). '
+          + ("Similar:" if near else f"Nothing similar, {len(nodes)} nodes on screen — see adbm ui"))
     for nd in near:
         print("  " + fmt_node(nd))
     return 1
@@ -890,10 +890,10 @@ def cmd_launch(a):
         act = ashell(s, f"cmd package resolve-activity --brief -c android.intent.category.LAUNCHER {a.package}")
         act = act.splitlines()[-1].strip() if act else ""
         if "/" not in act:
-            return f"ошибка — нет launcher-активити у {a.package}"
+            return f"error — {a.package} has no launcher activity"
         code, out, err = adb(s, "shell", f"am start -W -n {act}", timeout=60)
         session_log({"api": api, "op": "launch", "package": a.package, "clear": bool(a.clear)})
-        return f"запущен {act}" if "Status: ok" in out or "Complete" in out else f"ошибка — {(out + err).strip()[-200:]}"
+        return f"started {act}" if "Status: ok" in out or "Complete" in out else f"error — {(out + err).strip()[-200:]}"
 
     for (api, s), r in zip(targets, parallel(targets, one)):
         print(f"{api}: {a.package} {r}")
@@ -905,9 +905,9 @@ def cmd_type(a):
     if re.fullmatch(r"[\x20-\x7e]*", a.text):
         adb(s, "shell", "input text " + shlex.quote(a.text.replace(" ", "%s")))
     else:
-        die("input text понимает только ASCII. Для кириллицы используй Maestro inputText во flow")
+        die("input text handles ASCII only. For non-Latin text use Maestro inputText in a flow")
     session_log({"api": api, "op": "type", "text": a.text})
-    print(f"{api}: введено {len(a.text)} символов")
+    print(f"{api}: typed {len(a.text)} characters")
     return 0
 
 
@@ -930,15 +930,15 @@ def cmd_swipe(a):
     d = {"up": (w // 2, int(h * .7), w // 2, int(h * .3)), "down": (w // 2, int(h * .3), w // 2, int(h * .7)),
          "left": (int(w * .8), h // 2, int(w * .2), h // 2), "right": (int(w * .2), h // 2, int(w * .8), h // 2)}
     if a.direction not in d:
-        die("направление: up, down, left, right")
+        die("direction: up, down, left, right")
     x0, y0, x1, y1 = d[a.direction]
     adb(s, "shell", f"input swipe {x0} {y0} {x1} {y1} {a.ms}")
     session_log({"api": api, "op": "swipe", "direction": a.direction})
-    print(f"{api}: свайп {a.direction}")
+    print(f"{api}: swipe {a.direction}")
     return 0
 
 
-# ---------------------------------------------------------------- команды: кадры
+# ---------------------------------------------------------------- commands: frames
 
 def frame_path(run, api, version, group, name):
     parts = [run, f"api{api}", version] + ([g for g in group.split("/") if g] if group else [])
@@ -1006,7 +1006,7 @@ def cmd_look(a):
         tw = LOOK_W["small" if a.small else "normal"]
         scale = tw / W
         im = im.resize((tw, int(H * scale)), Image.LANCZOS)
-        note = "кадр"
+        note = "frame"
     d = os.path.join(run, "look")
     os.makedirs(d, exist_ok=True)
     n = len(glob.glob(os.path.join(d, "*.png"))) + 1
@@ -1015,18 +1015,18 @@ def cmd_look(a):
     tok = -(-im.width // 28) * -(-im.height // 28)
     if run != CACHE:
         stats_add(run, context_images=1, context_image_tokens=tok)
-    print(f"{rel(p)}  {im.width}x{im.height} · {note} · scale={scale:.3f} (экранные = картинка / scale) · ~{tok} токенов")
+    print(f"{rel(p)}  {im.width}x{im.height} · {note} · scale={scale:.3f} (screen = image / scale) · ~{tok} tokens")
     return 0
 
 
 def annotate_tap(api, s, n):
     acli = shutil.which("android")
     if not acli:
-        die("нет Android CLI — `adbm setup --android-cli --yes` или тапай по тексту из `adbm ui`")
+        die("no Android CLI — `adbm setup --android-cli --yes`, or tap by text from `adbm ui`")
     ref = os.path.join(CACHE, f"annotate-{s}.txt")
     shot = open(ref).read().strip() if os.path.exists(ref) else ""
     if not os.path.exists(shot):
-        die("нет свежего `adbm annotate` для этого устройства")
+        die("no fresh `adbm annotate` for this device")
     code, out, err = sh([acli, "--no-metrics", "screen", "resolve", "--screenshot", shot, "--string", f"#{n}"],
                         timeout=60)
     m = re.search(r"(\d+)\s+(\d+)\s*$", out.strip())
@@ -1035,7 +1035,7 @@ def annotate_tap(api, s, n):
     x, y = map(int, m.groups())
     tap_xy(s, x, y)
     session_log({"api": api, "op": "tap_xy", "x": x, "y": y, "screen": screen_size(s), "note": f"annotate #{n}"})
-    print(f"{api}: тап #{n} → {x},{y}")
+    print(f"{api}: tap #{n} → {x},{y}")
     return 0
 
 
@@ -1043,7 +1043,7 @@ def cmd_annotate(a):
     from PIL import Image
     acli = shutil.which("android")
     if not acli:
-        die("нет Android CLI — `adbm setup --android-cli --yes`. Без него: `adbm ui` + `adbm tap \"текст\"`")
+        die("no Android CLI — `adbm setup --android-cli --yes`. Without it: `adbm ui` + `adbm tap \"text\"`")
     api, s = pick(a)[0]
     run = scratch()
     d = os.path.join(run, "look")
@@ -1056,7 +1056,7 @@ def cmd_annotate(a):
     if code != 0 or not os.path.exists(raw):
         log = os.path.join(run, "logs", f"annotate-api{api}.log")
         open(log, "w").write(out + "\n" + err)
-        die(f"android screen capture --annotate упал, лог {rel(log)}")
+        die(f"android screen capture --annotate failed, log {rel(log)}")
     im = Image.open(raw).convert("RGB")
     scale = 540 / im.width
     im = im.resize((540, int(im.height * scale)), Image.LANCZOS)
@@ -1066,7 +1066,7 @@ def cmd_annotate(a):
     tok = -(-im.width // 28) * -(-im.height // 28)
     if run != CACHE:
         stats_add(run, context_images=1, context_image_tokens=tok)
-    print(f"{rel(p)}  540x{im.height} · ~{tok} токенов · тап: adbm tap --api {api} '#N'")
+    print(f"{rel(p)}  540x{im.height} · ~{tok} tokens · tap: adbm tap --api {api} '#N'")
     return 0
 
 
@@ -1079,7 +1079,7 @@ def parse_matrix(items):
         for part in it.split():
             k, _, v = part.partition("=")
             if k not in ("theme", "nav", "font_scale", "font", "locale"):
-                die(f"ось матрицы не поддерживается: {k} (theme, nav, font, locale)")
+                die(f"matrix axis not supported: {k} (theme, nav, font, locale)")
             axes.append(("font_scale" if k == "font" else k, [x for x in v.split(",") if x]))
     cells = [{}]
     for k, vals in axes:
@@ -1095,9 +1095,9 @@ def cell_group(cell, keys, extra=""):
 
 
 def run_watched(cmd, stall, total):
-    """Запуск с двумя сторожами: нет вывода дольше stall с или всё дольше total с — убить группу процессов.
+    """Run with two watchdogs: no output for longer than stall s, or longer than total s overall — kill the process group.
 
-    Возвращает (код, вывод, причина): причина None, 'stall' или 'timeout'.
+    Returns (code, output, reason): reason is None, 'stall' or 'timeout'.
     """
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
     lines, last = [], [time.time()]
@@ -1118,7 +1118,7 @@ def run_watched(cmd, stall, total):
         elif now - t0 > total:
             reason = "timeout"
         if reason:
-            # maestro — shell-обёртка над JVM: убиваем всю группу, иначе java переживёт обёртку
+            # maestro is a shell wrapper around a JVM: kill the whole group, or java outlives the wrapper
             for sig in (signal.SIGTERM, signal.SIGKILL):
                 try:
                     os.killpg(p.pid, sig)
@@ -1135,27 +1135,27 @@ def run_watched(cmd, stall, total):
 
 
 def watch_limits(flow, api_list, stall, timeout):
-    """Пороги сторожа: из флагов, иначе из flow и истории прогонов. Возвращает (stall, timeout, пояснение)."""
+    """Watchdog limits: from flags, otherwise from the flow and run history. Returns (stall, timeout, explanation)."""
     notes = []
     if stall is None:
         waits = [int(x) for x in re.findall(r"^\s*timeout:\s*(\d+)", open(flow).read(), re.M)]
         longest = max(waits) // 1000 if waits else 0
         stall = max(45, longest + 20)
-        notes.append(f"тишина {stall} с = самое долгое ожидание во flow {longest} с + 20, не меньше 45")
+        notes.append(f"silence {stall} s = longest wait in the flow {longest} s + 20, at least 45")
     else:
-        notes.append(f"тишина {stall} с (флаг)")
+        notes.append(f"silence {stall} s (flag)")
     if timeout is None:
         hist = load_durations().get(os.path.abspath(flow), {})
         last = [hist[str(a)] for a in api_list if str(a) in hist]
         if last:
             timeout = max(90, int(2 * max(last)))
-            notes.append(f"ячейка {timeout} с = 2 × прошлый прогон {max(last):.0f} с, не меньше 90")
+            notes.append(f"cell {timeout} s = 2 × last run {max(last):.0f} s, at least 90")
         else:
             timeout = 600
-            notes.append("ячейка 600 с (истории прогонов нет)")
+            notes.append("cell 600 s (no run history)")
     else:
-        notes.append(f"ячейка {timeout} с (флаг)")
-    return stall, timeout, "сторож: " + "; ".join(notes)
+        notes.append(f"cell {timeout} s (flag)")
+    return stall, timeout, "watchdog: " + "; ".join(notes)
 
 
 def load_durations():
@@ -1177,16 +1177,16 @@ ANR = re.compile(r"isn.t responding|не отвечает|keeps stopping|has sto
 
 
 def device_diagnosis(serial, nodes):
-    """Что случилось с устройством: офлайн, окно ANR/краша, текущее окно."""
+    """What happened to the device: offline, an ANR/crash window, the current window."""
     code, out, _ = sh([adb_bin(), "-s", serial, "get-state"], timeout=10)
     if code != 0 or out.strip() != "device":
-        return f"устройство {serial} не отвечает ({out.strip() or 'нет ответа'}) — adbm devices, перезапуск эмулятора"
+        return f"device {serial} is not responding ({out.strip() or 'no answer'}) — adbm devices, restart the emulator"
     hit = [n["text"] or n["desc"] for n in nodes if ANR.search(n["text"] + " " + n["desc"])]
     if hit:
-        return f"на экране системный диалог: «{trunc(hit[0], 50)}» — приложение зависло или упало"
+        return f"system dialog on screen: \"{trunc(hit[0], 50)}\" — the app hung or crashed"
     focus = ashell(serial, "dumpsys window | grep -m1 mCurrentFocus", timeout=15)
     m = re.search(r"\S+/\S+(?=})", focus)
-    return f"в фокусе {m.group(0) if m else focus.strip()[:80]}"
+    return f"focus: {m.group(0) if m else focus.strip()[:80]}"
 
 
 def maestro_failure(log):
@@ -1199,10 +1199,10 @@ def maestro_failure(log):
 def cmd_run(a):
     mae = shutil.which("maestro")
     if not mae:
-        die("нет Maestro — `adbm setup --maestro --yes`")
+        die("no Maestro — `adbm setup --maestro --yes`")
     flow = os.path.abspath(a.flow)
     if not os.path.exists(flow):
-        die(f"нет flow: {a.flow}")
+        die(f"no such flow: {a.flow}")
     targets = pick(a, multi=True)
     slug = os.path.splitext(os.path.basename(flow))[0]
     run = new_run(slug) if a.new else current_run(slug=slug)
@@ -1223,13 +1223,13 @@ def cmd_run(a):
     def one(api, s):
         res = []
         if min_sdk and api < min_sdk:
-            return [({}, "skip", f"у сборки {version} minSdk {min_sdk}", 0)]
+            return [({}, "skip", f"build {version} has minSdk {min_sdk}", 0)]
         for cell in cells:
             if cell.get("nav") == "gestural" and api < 29:
-                res.append((cell, "skip", f"gestural нет на API {api}", 0))
+                res.append((cell, "skip", f"no gestural on API {api}", 0))
                 continue
             if cell.get("locale") and (api < 33 or not app):
-                res.append((cell, "skip", f"locale нужен API 33+ и пакет приложения (API {api}, пакет {app or 'нет'})", 0))
+                res.append((cell, "skip", f"locale needs API 33+ and the app package (API {api}, package {app or 'none'})", 0))
                 continue
             group = cell_group(cell, keys, a.group or "")
             tag = f"api{api}" + ("-" + group.replace("/", "-") if group else "")
@@ -1272,28 +1272,28 @@ def cmd_run(a):
                     pass
                 steps = [l.strip() for l in log.splitlines() if l.strip()]
                 if hung:
-                    limit = f"нет вывода {stall} с" if hung == "stall" else f"дольше {timeout} с"
-                    why = f"ЗАВИС ({limit}) после шага «{trunc(steps[-1], 60) if steps else '—'}»"
+                    limit = f"no output for {stall} s" if hung == "stall" else f"longer than {timeout} s"
+                    why = f"HUNG ({limit}) after step \"{trunc(steps[-1], 60) if steps else '—'}\""
                 else:
                     why = maestro_failure(log)
-                why += f" · {device_diagnosis(s, nodes)} · экран: logs/ui-fail-{tag}.txt"
+                why += f" · {device_diagnosis(s, nodes)} · screen: logs/ui-fail-{tag}.txt"
                 if "Screenshot returned null" in log:
                     why += " · " + SECURE_HINT
                 if crash.strip():
-                    why += " · есть crash в logs/crash-" + tag + ".txt"
+                    why += " · crash in logs/crash-" + tag + ".txt"
                 res.append((cell, "fail", why, len(shots), log_p))
             elif bad["black"]:
-                res.append((cell, "fail", f"чёрных кадров {len(bad['black'])} из {len(shots)} · " + SECURE_HINT,
+                res.append((cell, "fail", f"black frames {len(bad['black'])} of {len(shots)} · " + SECURE_HINT,
                             len(shots), log_p))
             else:
                 save_duration(flow, api, time.time() - t0)
-                res.append((cell, "ok", f"{time.time() - t0:.0f} с", len(shots), log_p))
+                res.append((cell, "ok", f"{time.time() - t0:.0f} s", len(shots), log_p))
             shutil.rmtree(out, ignore_errors=True)
         return res
 
     stall, timeout, why = watch_limits(flow, [t[0] for t in targets], a.stall, a.timeout)
-    print(f"прогон {rel(run)} · {version} · {os.path.basename(flow)} · API {','.join(str(t[0]) for t in targets)}"
-          + (f" · ячеек {len(cells)}" if len(cells) > 1 else ""))
+    print(f"run {rel(run)} · {version} · {os.path.basename(flow)} · API {','.join(str(t[0]) for t in targets)}"
+          + (f" · cells {len(cells)}" if len(cells) > 1 else ""))
     print(why)
     results = parallel(targets, one)
     total = fails = 0
@@ -1303,25 +1303,25 @@ def cmd_run(a):
             label = f"{api}" + (" " + cell_group(cell, keys) if keys else "")
             total += n
             if st == "ok":
-                print(f"{label}: ок, кадров {n}, {why}")
+                print(f"{label}: ok, frames {n}, {why}")
             elif st == "skip":
-                print(f"{label}: пропуск — {why}")
+                print(f"{label}: skipped — {why}")
             else:
                 fails += 1
-                print(f"{label}: СБОЙ, кадров {n} — {why} → {rel(r[4])}")
+                print(f"{label}: FAILED, frames {n} — {why} → {rel(r[4])}")
     stats_add(run, frames=total)
-    print(f"итого кадров {total}" + (f", сбоев {fails}" if fails else "") + " · дальше: adbm diff, adbm board")
+    print(f"total frames {total}" + (f", failures {fails}" if fails else "") + " · next: adbm diff, adbm board")
     return 1 if fails else 0
 
 
-# ---------------------------------------------------------------- скан прогона
+# ---------------------------------------------------------------- run scan
 
 def scan_run(run):
-    """Кадры прогона → {key: {api: {'before': path, 'after': path}}}.
+    """Run frames → {key: {api: {'before': path, 'after': path}}}.
 
-    Понимает две раскладки:
-      api35/after/<группа…>/<имя>.png         (adbm)
-      api35/<группа…>/<имя>-after.png         (старые ручные прогоны)
+    Understands two layouts:
+      api35/after/<group…>/<name>.png         (adbm)
+      api35/<group…>/<name>-after.png         (old manual runs)
     """
     frames = {}
     for p in sorted(glob.glob(os.path.join(run, "api*", "**", "*.png"), recursive=True)):
@@ -1330,7 +1330,7 @@ def scan_run(run):
         if not m:
             continue
         if frame_problem(p) == "broken":
-            print(f"пропуск битого кадра: {os.path.relpath(p, run)}", file=sys.stderr)
+            print(f"skipping broken frame: {os.path.relpath(p, run)}", file=sys.stderr)
             continue
         api = int(m.group(1))
         name = os.path.splitext(parts[-1])[0]
@@ -1395,8 +1395,8 @@ def ui_diff(bp, ap):
                     d.append(f"{'→' if dx > 0 else '←'}{abs(dx)}")
                 out.append(f'"{trunc(k, 30)}" {" ".join(d)} px')
         else:
-            out.append(f'"{trunc(k, 30)}" исчез')
-    out += [f'"{trunc(k, 30)}" появился' for k in a if k not in b]
+            out.append(f'"{trunc(k, 30)}" gone')
+    out += [f'"{trunc(k, 30)}" appeared' for k in a if k not in b]
     return out
 
 
@@ -1406,7 +1406,7 @@ def diff_pair(bp, ap, outp, mask_top):
     a = Image.open(ap).convert("RGB")
     note = ""
     if a.size != b.size:
-        note = f"размер {b.size[0]}x{b.size[1]} → {a.size[0]}x{a.size[1]}"
+        note = f"size {b.size[0]}x{b.size[1]} → {a.size[0]}x{a.size[1]}"
         a = a.resize(b.size)
     m = int(b.height * mask_top)
     d = ImageChops.difference(b, a).convert("L").point(lambda v: 255 if v > 24 else 0)
@@ -1427,7 +1427,7 @@ def diff_pair(bp, ap, outp, mask_top):
             dr = ImageDraw.Draw(base)
             dr.rectangle(bbox, outline=(230, 30, 30), width=max(3, b.width // 200))
         base.save(outp, optimize=True)
-    # dHash совпал и пикселей изменилось меньше 0,1% — шум сглаживания, а не изменение
+    # dHash matches and less than 0.1% of pixels changed — antialiasing noise, not a change
     return {"pct": round(pct, 2), "bbox": list(bbox) if bbox else None, "same": changed == 0 or (same_hash and pct < 0.1),
             "phash_same": same_hash, "note": note}
 
@@ -1435,7 +1435,7 @@ def diff_pair(bp, ap, outp, mask_top):
 def cmd_diff(a):
     run = resolve_run(a.run, create=False)
     if not run:
-        die("нет текущего прогона")
+        die("no current run")
     frames = scan_run(run)
     out_dir = os.path.join(run, "diff")
     res = []
@@ -1454,19 +1454,19 @@ def cmd_diff(a):
             res.append(r)
             label = f"api{api}/" + (group + "/" if group else "") + name
             if r["same"]:
-                s = "без изменений"
+                s = "unchanged"
             else:
                 bb = r["bbox"]
                 s = f"{r['pct']:.1f}% @{bb[0]},{bb[1]}-{bb[2]},{bb[3]}"
                 if r["phash_same"]:
-                    s += " (на глаз похоже)"
+                    s += " (looks the same)"
             if r["note"]:
                 s += " · " + r["note"]
             if r["ui"]:
                 s += " · " + "; ".join(r["ui"][:3]) + (f" (+{len(r['ui']) - 3})" if len(r["ui"]) > 3 else "")
             lines.append(f"{label}: {s}")
     if not res:
-        print("нет пар «до/после» — сними кадры с --as before и --as after")
+        print("no before/after pairs — capture frames with --as before and --as after")
         return 1
     os.makedirs(out_dir, exist_ok=True)
     json.dump(res, open(os.path.join(out_dir, "diff.json"), "w"), ensure_ascii=False, indent=1)
@@ -1475,9 +1475,9 @@ def cmd_diff(a):
     for l in show[: a.limit]:
         print(l)
     if len(show) > a.limit:
-        print(f"… ещё {len(show) - a.limit} → {rel(os.path.join(out_dir, 'diff.json'))}")
-    print(f"пар {len(res)}, изменилось {len(changed)}, без изменений {len(res) - len(changed)} · "
-          f"картинки диффа: {rel(out_dir)}/")
+        print(f"… {len(show) - a.limit} more → {rel(os.path.join(out_dir, 'diff.json'))}")
+    print(f"pairs {len(res)}, changed {len(changed)}, unchanged {len(res) - len(changed)} · "
+          f"diff images: {rel(out_dir)}/")
     stats_add(run, pairs=len(res), pairs_changed=len(changed))
     return 0
 
@@ -1511,7 +1511,7 @@ def cmd_record(a):
         if a.slow:
             prep_device(api, s)
     if not os.path.exists(base + ".mp4") or os.path.getsize(base + ".mp4") < 1000:
-        die("видео не записалось (screenrecord на этом образе может не работать)")
+        die("the video was not recorded (screenrecord may not work on this image)")
     sheet = base + "-sheet.png"
     ff = shutil.which("ffmpeg")
     if ff:
@@ -1522,8 +1522,8 @@ def cmd_record(a):
         sh([ff, "-loglevel", "error", "-y", "-i", base + ".mp4", "-vf",
             f"fps={fps:.3f},scale=240:-1,tile={cols}x{rows}", "-frames:v", "1", sheet], timeout=120)
     print(f"{api}: {rel(base + '.mp4')} ({human_size(os.path.getsize(base + '.mp4'))})"
-          + (f" · лист кадров {rel(sheet)}" if os.path.exists(sheet) else " · ffmpeg нет, листа нет")
-          + (f" · команда вернула {cmd_rc}" if cmd_rc else ""))
+          + (f" · contact sheet {rel(sheet)}" if os.path.exists(sheet) else " · no ffmpeg, no contact sheet")
+          + (f" · command returned {cmd_rc}" if cmd_rc else ""))
     return 0
 
 
@@ -1532,11 +1532,11 @@ def cmd_record(a):
 def cmd_save_flow(a):
     p = os.path.join(CACHE, "session.jsonl")
     if not os.path.exists(p):
-        die("журнал пуст: ручных действий ещё не было")
+        die("the journal is empty: no manual actions yet")
     root = project_root()
     ents = [e for e in (json.loads(l) for l in open(p) if l.strip()) if e.get("project", root) == root]
     if not ents:
-        die(f"в журнале нет действий для проекта {root}")
+        die(f"the journal has no actions for project {root}")
     api = a.api and parse_apis(a.api)[0]
     if not api:
         api = ents[-1].get("api")
@@ -1544,8 +1544,8 @@ def cmd_save_flow(a):
     starts = [i for i, e in enumerate(ents) if e["op"] == "launch"]
     if starts:
         ents = ents[starts[-1]:]
-    pkg = next((e["package"] for e in ents if e["op"] == "launch"), a.app or "<пакет приложения>")
-    out = [f"# сгенерировано adbm save-flow из ручной сессии на API {api} — проверь селекторы",
+    pkg = next((e["package"] for e in ents if e["op"] == "launch"), a.app or "<app package>")
+    out = [f"# generated by adbm save-flow from a manual session on API {api} — check the selectors",
            f"appId: {pkg}", "---"]
     n = 0
     for e in ents:
@@ -1565,7 +1565,7 @@ def cmd_save_flow(a):
             out.append(f"- tapOn: {val}" if sel[0] == "text" else f"- tapOn:\n    id: {val}")
         elif op == "tap_xy":
             w, h = e.get("screen") or (1, 1)
-            out += ["# TODO: тап по координатам — замени на селектор из adbm ui",
+            out += ["# TODO: tap by coordinates — replace with a selector from adbm ui",
                     "- tapOn:", f'    point: "{round(100 * e["x"] / w)}%,{round(100 * e["y"] / h)}%"']
         elif op == "type":
             out.append(f'- inputText: {json.dumps(e["text"], ensure_ascii=False)}')
@@ -1573,7 +1573,7 @@ def cmd_save_flow(a):
             mk = {"back": "Back", "home": "Home", "enter": "Enter", "del": "Backspace", "escape": "Escape"}
             k = mk.get(e["key"])
             out.append("- back" if e["key"] == "back" else (f"- pressKey: {k}" if k else
-                       f"# TODO: клавиша {e['key']} не переводится в Maestro pressKey"))
+                       f"# TODO: key {e['key']} has no Maestro pressKey equivalent"))
         elif op == "swipe":
             out += ["- swipe:", f'    direction: {e["direction"].upper()}']
         elif op == "shot":
@@ -1582,13 +1582,13 @@ def cmd_save_flow(a):
     dest = a.out or os.path.join(project_root(), ".adbm", "flows", slugify(a.slug) + ".yaml")
     os.makedirs(os.path.dirname(dest), exist_ok=True)
     if os.path.exists(dest) and not a.force:
-        die(f"{rel(dest)} уже есть — --force, чтобы перезаписать")
+        die(f"{rel(dest)} already exists — --force to overwrite")
     open(dest, "w").write("\n".join(out) + "\n")
-    print(f"{rel(dest)}: шагов {len(ents)}, кадров {n} · проверь: adbm run {rel(dest)} --api {api}")
+    print(f"{rel(dest)}: steps {len(ents)}, frames {n} · check: adbm run {rel(dest)} --api {api}")
     return 0
 
 
-# ---------------------------------------------------------------- board и коллаж
+# ---------------------------------------------------------------- board and contact sheet
 
 def load_font(size):
     from PIL import ImageFont
@@ -1603,14 +1603,14 @@ def load_font(size):
 
 
 def collage(frames, keys, apis, out, max_side=2000, verdicts=None):
-    """Коллаж: блок на кадр, внутри — колонки API × «до | после».
+    """Contact sheet: one block per frame, inside it columns API × "before | after".
 
-    Подбирает ширину миниатюры и число колонок блоков так, чтобы
-    картинка влезла в max_side × max_side: при 20+ картинках в запросе Claude режет всё больше 2000 px.
+    Picks the thumbnail width and the number of block columns so the image
+    fits in max_side × max_side: with 20+ images in a request Claude downscales anything over 2000 px.
     """
     from PIL import Image, ImageDraw
     gap, hdr = 6, 26
-    # пропорции кадра
+    # frame aspect ratio
     sample = next(p for k in keys for api in frames[k] for p in frames[k][api].values())
     with Image.open(sample) as im:
         ratio = im.height / im.width
@@ -1635,8 +1635,8 @@ def collage(frames, keys, apis, out, max_side=2000, verdicts=None):
     font, small = load_font(15), load_font(12)
     sheet = Image.new("RGB", (W, H), (40, 40, 44))
     dr = ImageDraw.Draw(sheet)
-    title = "до | после" if has_before else "кадры"
-    dr.text((gap, 7), f"{title} · API {', '.join(map(str, apis))} · кадров {len(keys)}", fill=(230, 230, 230), font=font)
+    title = "before | after" if has_before else "frames"
+    dr.text((gap, 7), f"{title} · API {', '.join(map(str, apis))} · frames {len(keys)}", fill=(230, 230, 230), font=font)
     for i, k in enumerate(keys):
         bx, by = (i % cols) * bw, 30 + (i // cols) * bh
         group, name = k
@@ -1659,7 +1659,7 @@ def collage(frames, keys, apis, out, max_side=2000, verdicts=None):
                         sheet.paste(im.convert("RGB").resize((w, th), Image.LANCZOS), (xx, y))
                 else:
                     dr.rectangle((xx, y, xx + w - 1, y + th - 1), fill=(70, 70, 74))
-                    dr.text((xx + 8, y + 8), "нет", fill=(160, 160, 160), font=small)
+                    dr.text((xx + 8, y + 8), "none", fill=(160, 160, 160), font=small)
     sheet.save(out, optimize=True)
     return W, H
 
@@ -1672,9 +1672,9 @@ VERDICT_COLOR = {"expected": (120, 210, 120), "review": (240, 190, 80), "problem
 
 
 def read_verdicts(run):
-    """Строки notes.md вида `ПРОБЛЕМА api35/группа/имя — …` → {(group,name): вердикт}.
+    """notes.md lines like `PROBLEM api35/group/name — …` → {(group,name): verdict}.
 
-    Ключи — expected/problem/review; русские слова и PASS/FAIL из старых notes.md — синонимы.
+    Keys are expected/problem/review; Russian words and PASS/FAIL from old notes.md are synonyms.
     """
     res = {}
     p = os.path.join(run, "notes.md")
@@ -1687,7 +1687,7 @@ def read_verdicts(run):
             v = VERDICTS[m.group(1).upper()]
             path = m.group(2).rstrip(":").rsplit("/", 1)
             key = (path[0], path[1]) if len(path) == 2 else ("", path[0])
-            # при нескольких API у кадра остаётся худший вердикт
+            # with several API levels a frame keeps its worst verdict
             if VERDICT_RANK[v] >= VERDICT_RANK.get(res.get(key), -1):
                 res[key] = v
     return res, text
@@ -1696,12 +1696,12 @@ def read_verdicts(run):
 def cmd_board(a):
     run = resolve_run(a.run, create=False)
     if not run:
-        die("нет текущего прогона")
+        die("no current run")
     out = os.path.abspath(a.out) if a.out else run
     os.makedirs(out, exist_ok=True)
     frames = scan_run(run)
     if not frames:
-        die(f"в {rel(run)} нет кадров api*/…")
+        die(f"no api*/… frames in {rel(run)}")
     keys = sorted(frames, key=frame_sort_key)
     apis = sorted({api for k in keys for api in frames[k]})
     verdicts, notes = read_verdicts(run)
@@ -1761,10 +1761,10 @@ def cmd_board(a):
     with open(os.path.join(out, "manifest.js"), "w") as f:
         f.write("window.MANIFEST = " + json.dumps(manifest, ensure_ascii=False) + ";\n")
     shutil.copy(VIEWER, os.path.join(out, "index.html"))
-    print(f"борд: {rel(os.path.join(out, 'index.html'))} · пар {pairs} · API {','.join(map(str, apis))}")
+    print(f"board: {rel(os.path.join(out, 'index.html'))} · pairs {pairs} · API {','.join(map(str, apis))}")
     for p, (w, h) in summary:
         tok = -(-w // 28) * -(-h // 28)
-        print(f"коллаж: {rel(p)} {w}x{h} (~{tok} токенов)")
+        print(f"contact sheet: {rel(p)} {w}x{h} (~{tok} tokens)")
     if a.open:
         subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", os.path.join(out, "index.html")],
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -1777,22 +1777,22 @@ def cmd_new(a):
     p = new_run(a.slug)
     if a.as_:
         open(os.path.join(p, ".as"), "w").write(a.as_)
-    print(f"прогон: {rel(p)}")
+    print(f"run: {rel(p)}")
     return 0
 
 
 def cmd_status(a):
     run = current_run(create=False)
     if not run:
-        print("прогона нет — adbm new <slug>")
+        print("no run — adbm new <slug>")
         return 0
     frames = scan_run(run)
     try:
         st = json.load(open(os.path.join(run, "stats.json")))
     except Exception:
         st = {}
-    print(f"прогон: {rel(run)} · as={default_as(run, a)}")
-    print(f"кадров {sum(len(v) for k in frames for v in frames[k].values())}, пар {sum(1 for k in frames for v in frames[k].values() if len(v) == 2)}")
+    print(f"run: {rel(run)} · as={default_as(run, a)}")
+    print(f"frames {sum(len(v) for k in frames for v in frames[k].values())}, pairs {sum(1 for k in frames for v in frames[k].values() if len(v) == 2)}")
     print("stats: " + json.dumps(st, ensure_ascii=False))
     return 0
 
@@ -1800,7 +1800,7 @@ def cmd_status(a):
 # ---------------------------------------------------------------- argparse
 
 def main():
-    P = argparse.ArgumentParser(prog="adbm", description="Android Debug Bridge Matrix — проверка Android-приложений агентом")
+    P = argparse.ArgumentParser(prog="adbm", description="Android Debug Bridge Matrix — visual checks of Android apps by an agent")
     P.add_argument("--version", action="version", version=VERSION)
     sub = P.add_subparsers(dest="cmd", required=True)
 
@@ -1808,95 +1808,95 @@ def main():
         p = sub.add_parser(name, help=help, description=help)
         p.set_defaults(fn=fn)
         if dev:
-            p.add_argument("--api", help="API через запятую: 28,33,35" if dev == "multi" else "API устройства")
-            p.add_argument("--serial", help="serial вместо --api")
+            p.add_argument("--api", help="API levels, comma-separated: 28,33,35" if dev == "multi" else "device API level")
+            p.add_argument("--serial", help="serial instead of --api")
         return p
 
-    add("doctor", cmd_doctor, "проверить окружение")
-    p = add("setup", cmd_setup, "поставить образы, AVD, Maestro, Android CLI (без --yes — только план)")
+    add("doctor", cmd_doctor, "check the environment")
+    p = add("setup", cmd_setup, "install system images, AVDs, Maestro, Android CLI (without --yes: plan only)")
     p.add_argument("--api")
-    p.add_argument("--tune", action="store_true", help="поправить config.ini существующих AVD")
+    p.add_argument("--tune", action="store_true", help="fix config.ini of existing AVDs")
     p.add_argument("--maestro", action="store_true")
     p.add_argument("--android-cli", action="store_true")
-    p.add_argument("--yes", action="store_true", help="выполнить план")
-    p = add("devices", cmd_devices, "список устройств; --start поднимает AVD нужных API")
+    p.add_argument("--yes", action="store_true", help="run the plan")
+    p = add("devices", cmd_devices, "list devices; --start boots AVDs for the given API levels")
     p.add_argument("--start", metavar="APIS")
     p.add_argument("--headless", action="store_true")
-    p = add("prep", cmd_prep, "детерминизм кадров: анимации 0, demo mode, тема, навигация", "multi")
+    p = add("prep", cmd_prep, "deterministic frames: animations off, demo mode, theme, navigation", "multi")
     p.add_argument("--theme", choices=("light", "dark"))
     p.add_argument("--nav", choices=("threebutton", "gestural"))
     p.add_argument("--font-scale")
     p.add_argument("--locale")
-    p.add_argument("--app", help="пакет для --locale (per-app locale, API 33+)")
+    p.add_argument("--app", help="package for --locale (per-app locale, API 33+)")
     p.add_argument("--reset", action="store_true")
-    p = add("install", cmd_install, "поставить APK на устройства", "multi")
+    p = add("install", cmd_install, "install an APK on devices", "multi")
     p.add_argument("apk")
     p.add_argument("--as", dest="as_", choices=VERSIONS, required=True)
-    p = add("new", cmd_new, "начать новый прогон build/adbm/<дата>-<slug>")
+    p = add("new", cmd_new, "start a new run build/adbm/<date>-<slug>")
     p.add_argument("slug")
     p.add_argument("--as", dest="as_", choices=VERSIONS)
-    add("status", cmd_status, "текущий прогон и счётчики")
-    p = add("ui", cmd_ui, "сжатое дерево UI текстом", "one")
+    add("status", cmd_status, "current run and counters")
+    p = add("ui", cmd_ui, "compact UI tree as text", "one")
     p.add_argument("--find")
-    p.add_argument("--all", action="store_true", help="с системным UI")
+    p.add_argument("--all", action="store_true", help="include system UI")
     p.add_argument("--limit", type=int, default=60)
-    p = add("tap", cmd_tap, 'тап по тексту, content-desc, id; "x,y"; "[N]" из ui; "#N" из annotate', "one")
+    p = add("tap", cmd_tap, 'tap by text, content-desc, id; "x,y"; "[N]" from ui; "#N" from annotate', "one")
     p.add_argument("selector")
     p.add_argument("--nth", type=int, default=0)
     p.add_argument("--index", type=int)
     p.add_argument("--retries", type=int, default=6)
-    p.add_argument("--scroll", type=int, default=0, help="сколько раз прокрутить вниз, если не нашёл")
-    p.add_argument("--wait", type=float, default=0.8, help="пауза после тапа, с")
-    p = add("launch", cmd_launch, "запустить приложение", "multi")
+    p.add_argument("--scroll", type=int, default=0, help="how many times to scroll down if not found")
+    p.add_argument("--wait", type=float, default=0.8, help="pause after the tap, s")
+    p = add("launch", cmd_launch, "launch an app", "multi")
     p.add_argument("package")
-    p.add_argument("--clear", action="store_true", help="pm clear перед запуском")
-    p.add_argument("--stop", action="store_true", help="force-stop перед запуском")
-    p = add("type", cmd_type, "ввести текст (ASCII)", "one")
+    p.add_argument("--clear", action="store_true", help="pm clear before launch")
+    p.add_argument("--stop", action="store_true", help="force-stop before launch")
+    p = add("type", cmd_type, "type text (ASCII)", "one")
     p.add_argument("text")
-    p = add("key", cmd_key, "клавиша: back, home, enter, escape или код", "multi")
+    p = add("key", cmd_key, "key: back, home, enter, escape or a keycode", "multi")
     p.add_argument("key")
-    p = add("swipe", cmd_swipe, "свайп up/down/left/right", "one")
+    p = add("swipe", cmd_swipe, "swipe up/down/left/right", "one")
     p.add_argument("direction")
     p.add_argument("--ms", type=int, default=300)
-    p = add("annotate", cmd_annotate, "кадр с номерами элементов (Android CLI), 540 px", "one")
-    p = add("look", cmd_look, "уменьшенный кадр для агента: 540 px, --small 360, --crop", "one")
+    p = add("annotate", cmd_annotate, "frame with numbered elements (Android CLI), 540 px", "one")
+    p = add("look", cmd_look, "downscaled frame for the agent: 540 px, --small 360, --crop", "one")
     p.add_argument("--small", action="store_true")
     p.add_argument("--crop", metavar="x0,y0,x1,y1")
-    p = add("shot", cmd_shot, "снять кадр в папку прогона (в контекст не идёт)", "multi")
+    p = add("shot", cmd_shot, "capture a frame into the run folder (not into the context)", "multi")
     p.add_argument("name")
     p.add_argument("--as", dest="as_", choices=VERSIONS)
     p.add_argument("--group", default="")
-    p.add_argument("--no-ui", action="store_true", help="не сохранять дерево UI рядом")
-    p = add("run", cmd_run, "прогнать Maestro flow на всех API параллельно", "multi")
+    p.add_argument("--no-ui", action="store_true", help="do not save the UI tree next to the frame")
+    p = add("run", cmd_run, "run a Maestro flow on all API levels in parallel", "multi")
     p.add_argument("flow")
     p.add_argument("--as", dest="as_", choices=VERSIONS)
-    p.add_argument("--matrix", nargs="+", metavar="ОСЬ=a,b", help="theme=light,dark nav=threebutton,gestural font=1.0,1.3")
-    p.add_argument("--group", default="", help="добавочная подпапка группы")
-    p.add_argument("-e", "--env", action="append", help="переменная Maestro KEY=VALUE")
-    p.add_argument("--new", action="store_true", help="начать новый прогон")
-    p.add_argument("--timeout", type=int, help="предел на ячейку, с (по умолчанию 2 × прошлый прогон или 600)")
-    p.add_argument("--stall", type=int, help="Maestro молчит дольше — зависание, с (по умолчанию самое долгое ожидание во flow + 20, не меньше 45)")
-    p = add("save-flow", cmd_save_flow, "журнал ручных действий → Maestro flow")
+    p.add_argument("--matrix", nargs="+", metavar="AXIS=a,b", help="theme=light,dark nav=threebutton,gestural font=1.0,1.3")
+    p.add_argument("--group", default="", help="extra group subfolder")
+    p.add_argument("-e", "--env", action="append", help="Maestro variable KEY=VALUE")
+    p.add_argument("--new", action="store_true", help="start a new run")
+    p.add_argument("--timeout", type=int, help="limit per cell, s (default: 2 × last run, or 600)")
+    p.add_argument("--stall", type=int, help="Maestro silent for longer — a hang, s (default: longest wait in the flow + 20, at least 45)")
+    p = add("save-flow", cmd_save_flow, "manual action journal → Maestro flow")
     p.add_argument("slug")
     p.add_argument("--api")
     p.add_argument("--app")
     p.add_argument("--out")
     p.add_argument("--force", action="store_true")
-    p = add("diff", cmd_diff, "пиксельный дифф «до/после» и дифф дерева UI")
+    p = add("diff", cmd_diff, "pixel diff before/after and UI tree diff")
     p.add_argument("--run")
-    p.add_argument("--all", action="store_true", help="показать и пары без изменений")
+    p.add_argument("--all", action="store_true", help="also show unchanged pairs")
     p.add_argument("--limit", type=int, default=30)
-    p.add_argument("--mask-top", type=float, default=0.04, help="доля высоты под статус-бар")
-    p = add("record", cmd_record, "видео screenrecord и лист кадров", "one")
+    p.add_argument("--mask-top", type=float, default=0.04, help="share of the height masked for the status bar")
+    p = add("record", cmd_record, "screenrecord video and a contact sheet", "one")
     p.add_argument("name")
     p.add_argument("--seconds", type=int, default=6)
-    p.add_argument("--slow", type=float, help="множитель анимаций на время записи")
+    p.add_argument("--slow", type=float, help="animation scale during recording")
     p.add_argument("--frames", type=int, default=12)
     p.add_argument("--as", dest="as_", choices=VERSIONS)
-    p.epilog = "После -- можно дать команду, которая выполнится во время записи: adbm record x --api 35 -- adbm tap --api 35 OK"
-    p = add("board", cmd_board, "HTML-борд и PNG-коллаж прогона")
+    p.epilog = "After -- you can pass a command to run during recording: adbm record x --api 35 -- adbm tap --api 35 OK"
+    p = add("board", cmd_board, "HTML board and PNG contact sheet of a run")
     p.add_argument("--run")
-    p.add_argument("--out", help="куда писать борд (по умолчанию — в папку прогона)")
+    p.add_argument("--out", help="where to write the board (default: the run folder)")
     p.add_argument("--open", action="store_true")
     p.add_argument("--summary-max", type=int, default=24)
 

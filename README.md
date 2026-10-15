@@ -54,7 +54,6 @@ python3 -m pip install Pillow
 ```
 
 The CLI works without Claude Code too: `ln -s ~/dev/adbm/skill/bin/adbm /usr/local/bin/adbm`.
-CLI output and the skill text are in Russian.
 
 ## Example
 

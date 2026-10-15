@@ -23,8 +23,7 @@ ADBM="${CLAUDE_SKILL_DIR}/bin/adbm"
 If the variable is not substituted, take the folder from the "Base directory for this skill" line.
 
 Run all commands from the project root: runs go to `<project>/build/adbm/<date>-<slug>/`.
-Help for a command: `"$ADBM" <command> -h`. CLI output is in Russian; the meaning of each
-message is given below where it matters.
+Help for a command: `"$ADBM" <command> -h`.
 
 ## Just an action on the device
 
@@ -72,7 +71,7 @@ A 1080×2400 image costs ~3350 tokens, a line of the UI tree ~15. So:
 
 ### 1. Environment
 
-`"$ADBM" doctor`. If rows marked «нет» (missing) block the task, show them to the person with
+`"$ADBM" doctor`. If rows marked `missing` block the task, show them to the person with
 the fix commands and ask whether to install. `adbm setup …` without `--yes` only prints the plan.
 Details: `reference/setup.md`.
 
@@ -135,7 +134,7 @@ Dark theme is not applied to the system UI on API 28, see `reference/api-matrix.
 `run` drives all API levels in parallel and prints one line per cell. On failure read
 `logs/ui-fail-*.txt` (the screen tree) and the reason line, not a screenshot.
 
-**Hangs and failures.** `adbm run` watches Maestro itself and prints its limits in the `сторож:` (watchdog) line.
+**Hangs and failures.** `adbm run` watches Maestro itself and prints its limits in the `watchdog:` line.
 - **Silence** (`--stall`) — the longest wait in the flow (`timeout:` of `extendedWaitUntil` and others)
   plus 20 s, at least 45 s. Maestro prints a step only after it ends, so the limit
   must be longer than the longest step.
@@ -144,10 +143,10 @@ Dark theme is not applied to the system UI on API 28, see `reference/api-matrix.
 - **Set your own limit** only if you know more than `adbm`. Example: a step without an explicit `timeout`
   waits for the network or a long data load — better add `timeout:` to that step in the flow.
 
-When a limit is exceeded, `adbm` kills Maestro and prints `ЗАВИС … после шага «…»` (hung after step …).
+When a limit is exceeded, `adbm` kills Maestro and prints `HUNG … after step "…"`.
 Next to it is a diagnosis: the device is offline, a system dialog "isn't responding" or "has stopped"
 is on screen, or which window has focus. What to do:
-- **device not responding** (`устройство … не отвечает`) — `adbm devices`. If the emulator is missing,
+- **device not responding** — `adbm devices`. If the emulator is missing,
   `adb -s <serial> emu kill`, then `adbm devices --start <API>`;
 - **"isn't responding" or "has stopped" dialog** — this is a finding, not a tool failure:
   `logs/crash-*.txt`, `adb logcat -b crash`. Tell the person and close the dialog with `adbm tap`;
