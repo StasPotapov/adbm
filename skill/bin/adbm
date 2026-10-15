@@ -44,6 +44,7 @@ TUNE = {
     "hw.gpu.mode": "host",
 }
 LOOK_W = {"normal": 540, "small": 360}
+DIFF_W = 540
 _lock = threading.Lock()
 
 
@@ -448,6 +449,20 @@ def trunc(s, n=60):
     return s if len(s) <= n else s[:n - 1] + "…"
 
 
+def similar_nodes(nodes, sel):
+    """Nodes sharing a word stem (first 4 letters of words longer than 2) with the selector."""
+    words = [w for w in re.split(r"\W+", sel.lower()) if len(w) > 2]
+    return [n for n in nodes if any(w[:4] in (n["text"] + n["desc"] + n["id"]).lower() for w in words)]
+
+
+def tree_text(nodes, limit=80):
+    """UI tree lines for a file: at most limit lines, None — all (ui_diff reads the whole tree)."""
+    lines = [fmt_node(n) for n in nodes[:limit]]
+    if limit is not None and len(nodes) > limit:
+        lines.append(f"… {len(nodes) - limit} more nodes")
+    return "\n".join(lines) + "\n"
+
+
 def ui_snapshot(serial, include_system=False):
     xml = dump_xml(serial)
     return xml, parse_nodes(xml, include_system)
@@ -825,20 +840,22 @@ def cmd_ui(a):
     xml, nodes = ui_snapshot(s, a.all)
     os.makedirs(CACHE, exist_ok=True)
     json.dump(nodes, open(os.path.join(CACHE, f"ui-{s}.json"), "w"), ensure_ascii=False)
-    full = os.path.join(scratch(), "logs", f"ui-api{api}-{int(time.time())}.xml")
-    open(full, "w").write(xml)
+    open(os.path.join(scratch(), "logs", f"ui-api{api}-last.xml"), "w").write(xml)
     if a.find:
-        nodes = find_nodes(nodes, a.find)
-        if not nodes:
-            print(f'not found: "{a.find}"')
-            print(f"full dump: {rel(full)}")
+        hit = find_nodes(nodes, a.find)
+        if not hit:
+            near = similar_nodes(nodes, a.find)[:5]
+            print(f'not found: "{a.find}"' + (" · similar:" if near else f" · nothing similar, {len(nodes)} nodes — adbm ui"))
+            for nd in near:
+                print("  " + fmt_node(nd))
             return 1
+        nodes = hit
     for nd in nodes[: a.limit]:
         print(fmt_node(nd))
     if len(nodes) > a.limit:
         print(f"… {len(nodes) - a.limit} more, narrow with --find")
     w, h = screen_size(s)
-    print(f"# API {api} {w}x{h} · nodes {len(nodes)} · xml {len(xml)} B → {rel(full)}")
+    print(f"# API {api} {w}x{h} · nodes {len(nodes)}")
     return 0
 
 
@@ -892,8 +909,7 @@ def cmd_tap(a):
                 time.sleep(a.wait)
             return 0
         time.sleep(1)
-    words = [w for w in re.split(r"\W+", sel.lower()) if len(w) > 2]
-    near = [n for n in nodes if any(w[:4] in (n["text"] + n["desc"] + n["id"]).lower() for w in words)][:8]
+    near = similar_nodes(nodes, sel)[:8]
     print(f'{api}: not found "{sel}" (tries {a.retries}, scrolls {scrolls}). '
           + ("Similar:" if near else f"Nothing similar, {len(nodes)} nodes on screen — see adbm ui"))
     for nd in near:
@@ -995,7 +1011,7 @@ def cmd_shot(a):
         if not a.no_ui:
             try:
                 _, nodes = ui_snapshot(s)
-                open(p[:-4] + ".ui.txt", "w").write("\n".join(fmt_node(n) for n in nodes) + "\n")
+                open(p[:-4] + ".ui.txt", "w").write(tree_text(nodes, limit=None))
             except SystemExit:
                 pass
         return p
@@ -1017,7 +1033,7 @@ def cmd_look(a):
     im = Image.open(io.BytesIO(screencap(s))).convert("RGB")
     W, H = im.size
     if a.crop:
-        x0, y0, x1, y1 = map(int, a.crop.split(","))
+        x0, y0, x1, y1 = parse_crop(a.crop, W, H)
         im = im.crop((x0, y0, x1, y1))
         scale = 1.0
         if max(im.size) > 1200:
@@ -1037,7 +1053,61 @@ def cmd_look(a):
     tok = -(-im.width // 28) * -(-im.height // 28)
     if run != CACHE:
         stats_add(run, context_images=1, context_image_tokens=tok)
-    print(f"{rel(p)}  {im.width}x{im.height} · {note} · scale={scale:.3f} (screen = image / scale) · ~{tok} tokens")
+    warn = " · over 1000 tokens: narrow the crop" if a.crop and tok > 1000 else ""
+    print(f"{rel(p)}  {im.width}x{im.height} · {note} · scale={scale:.3f} (screen = image / scale) · ~{tok} tokens{warn}")
+    return 0
+
+
+def parse_crop(s, w, h):
+    """'x0,y0,x1,y1' → a box clamped to w × h; die on a malformed or empty box."""
+    try:
+        x0, y0, x1, y1 = map(int, s.split(","))
+    except ValueError:
+        die(f"--crop wants x0,y0,x1,y1 in pixels: {s}")
+    box = (max(0, x0), max(0, y0), min(w, x1), min(h, y1))
+    if box[2] <= box[0] or box[3] <= box[1]:
+        die(f"--crop {s} is empty inside a {w}x{h} frame")
+    return box
+
+
+def frame_run(path):
+    """The run folder a frame belongs to: build/adbm/<run>/…, else None."""
+    d = os.path.dirname(os.path.abspath(path))
+    while d != os.path.dirname(d):
+        parent = os.path.dirname(d)
+        if os.path.basename(parent) == "adbm" and os.path.basename(os.path.dirname(parent)) == "build":
+            return d
+        d = parent
+    return None
+
+
+def cmd_thumb(a):
+    Image = pil()
+    if not os.path.exists(a.frame):
+        die(f"no such file {a.frame}")
+    if frame_problem(a.frame, check_black=False):
+        die(f"not a PNG or empty: {a.frame}")
+    run = frame_run(a.frame) or CACHE
+    im = Image.open(a.frame).convert("RGB")
+    W, H = im.size
+    if a.crop:
+        x0, y0, x1, y1 = parse_crop(a.crop, W, H)
+        im = im.crop((x0, y0, x1, y1))
+        note = f"crop {x0},{y0}-{x1},{y1}"
+    else:
+        note = "frame"
+    scale = min(1.0, a.w / im.width, (a.w * 2.5) / im.height)
+    if scale < 1:
+        im = im.resize((max(1, int(im.width * scale)), max(1, int(im.height * scale))), Image.LANCZOS)
+    d = os.path.join(run, "look")
+    os.makedirs(d, exist_ok=True)
+    n = len(glob.glob(os.path.join(d, "*.png"))) + 1
+    p = os.path.join(d, f"{n:03d}-thumb-{slugify_name(os.path.basename(a.frame))}.png")
+    im.save(p, optimize=True)
+    tok = -(-im.width // 28) * -(-im.height // 28)
+    if run != CACHE:
+        stats_add(run, thumb_images=1, thumb_image_tokens=tok)
+    print(f"{rel(p)}  {im.width}x{im.height} · {note} · scale={scale:.3f} (frame = image / scale) · ~{tok} tokens")
     return 0
 
 
@@ -1300,14 +1370,13 @@ def cmd_run(a):
                     bad["black"].append(os.path.basename(p))
             shots = kept
             if code != 0 or hung:
-                crash = adb(s, "logcat", "-b", "crash", "-d", "-t", "200")[1]
+                crash = adb(s, "logcat", "-b", "crash", "-d", "-t", "60")[1]
                 if crash.strip():
                     open(os.path.join(run, "logs", f"crash-{tag}.txt"), "w").write(crash)
                 nodes = []
                 try:
                     _, nodes = ui_snapshot(s)
-                    open(os.path.join(run, "logs", f"ui-fail-{tag}.txt"), "w").write(
-                        "\n".join(fmt_node(n) for n in nodes) + "\n")
+                    open(os.path.join(run, "logs", f"ui-fail-{tag}.txt"), "w").write(tree_text(nodes))
                 except SystemExit:
                     pass
                 steps = [l.strip() for l in log.splitlines() if l.strip()]
@@ -1444,36 +1513,122 @@ def ui_diff(bp, ap):
     return out
 
 
-def diff_pair(bp, ap, outp, mask_top):
-    from PIL import Image, ImageChops
+def pil():
+    try:
+        from PIL import Image
+    except ImportError:
+        die("Pillow is missing — python3 -m pip install Pillow")
+    return Image
+
+
+def px_diff(b, a, mask_top):
+    """Pixel diff of two RGB images of one size → (mask, changed, pct, bbox, top share).
+
+    The top strip (status bar) is masked out of pct and bbox; its own changed share, without
+    the clock, comes separately.
+    """
+    from PIL import ImageChops
+    m = int(b.height * mask_top)
+    d = ImageChops.difference(b, a).convert("L").point(lambda v: 255 if v > 24 else 0)
+    top = 0.0
+    if m:
+        # the clock sits in the left part: without demo mode it ticks between captures, so only the icons count
+        x = int(b.width * CLOCK_W)
+        top = d.crop((x, 0, b.width, m)).histogram()[255] / ((b.width - x) * m)
+        d.paste(0, (0, 0, b.width, m))
+    changed = d.histogram()[255]
+    pct = 100.0 * changed / (b.width * (b.height - m))
+    return d, changed, pct, d.getbbox(), top
+
+
+def pair_crop(b, a, box, out, max_w=DIFF_W, max_h=800, pad=16, min_scale=0.5):
+    """"before | after" of one area: side by side if the area is tall, stacked if wide.
+
+    Written only if the area fits at scale ≥ min_scale, otherwise the downscaled diff shows it as well.
+    """
+    Image = pil()
+    x0, y0, x1, y1 = box
+    box = (max(0, x0 - pad), max(0, y0 - pad), min(b.width, x1 + pad), min(b.height, y1 + pad))
+    cb, ca = b.crop(box), a.crop(box)
+    cw, ch = cb.size
+    gap = 4
+    side = ch > cw
+    W, H = (2 * cw + gap, ch) if side else (cw, 2 * ch + gap)
+    s = min(1.0, max_w / W, max_h / H)
+    if s < min_scale:
+        return False
+    sheet = Image.new("RGB", (W, H), (230, 30, 30))
+    sheet.paste(cb, (0, 0))
+    sheet.paste(ca, (cw + gap, 0) if side else (0, ch + gap))
+    if s < 1:
+        sheet = sheet.resize((int(W * s), int(H * s)), Image.LANCZOS)
+    sheet.save(out, optimize=True)
+    return True
+
+
+TOP_NOISE = 0.002
+CLOCK_W = 0.3
+
+
+def diff_pair(bp, ap, outp, mask_top, full=False):
+    """Diff of one pair; for a changed pair writes outp (DIFF_W px), outp.crop.png and outp.top.png when useful."""
+    Image = pil()
     b = Image.open(bp).convert("RGB")
     a = Image.open(ap).convert("RGB")
     note = ""
     if a.size != b.size:
         note = f"size {b.size[0]}x{b.size[1]} → {a.size[0]}x{a.size[1]}"
         a = a.resize(b.size)
-    m = int(b.height * mask_top)
-    d = ImageChops.difference(b, a).convert("L").point(lambda v: 255 if v > 24 else 0)
-    if m:
-        d.paste(0, (0, 0, b.width, m))
-    hist = d.histogram()
-    changed = hist[255]
-    pct = 100.0 * changed / (b.width * (b.height - m))
-    bbox = d.getbbox()
+    d, changed, pct, bbox, top = px_diff(b, a, mask_top)
     same_hash = dhash(b) == dhash(a)
-    if changed and outp:
+    # dHash matches and less than 0.1% of pixels changed — antialiasing noise, not a change
+    content_same = changed == 0 or (same_hash and pct < 0.1)
+    top_changed = top > TOP_NOISE
+    files = {}
+    if not (content_same and not top_changed) and outp:
         os.makedirs(os.path.dirname(outp), exist_ok=True)
         base = Image.blend(a, Image.new("RGB", a.size, "white"), 0.6)
-        red = Image.new("RGB", a.size, (230, 30, 30))
-        base.paste(red, (0, 0), d)
+        base.paste(Image.new("RGB", a.size, (230, 30, 30)), (0, 0), d)
         if bbox:
             from PIL import ImageDraw
-            dr = ImageDraw.Draw(base)
-            dr.rectangle(bbox, outline=(230, 30, 30), width=max(3, b.width // 200))
+            ImageDraw.Draw(base).rectangle(bbox, outline=(230, 30, 30), width=max(3, b.width // 200))
+        if not full and base.width > DIFF_W:
+            base = base.resize((DIFF_W, int(base.height * DIFF_W / base.width)), Image.LANCZOS)
         base.save(outp, optimize=True)
-    # dHash matches and less than 0.1% of pixels changed — antialiasing noise, not a change
-    return {"pct": round(pct, 2), "bbox": list(bbox) if bbox else None, "same": changed == 0 or (same_hash and pct < 0.1),
-            "phash_same": same_hash, "note": note}
+        files["diff"] = outp
+        if bbox and not content_same and pair_crop(b, a, bbox, outp[:-4] + ".crop.png"):
+            files["crop"] = outp[:-4] + ".crop.png"
+        if top_changed and pair_crop(b, a, (0, 0, b.width, int(b.height * mask_top)), outp[:-4] + ".top.png",
+                                     pad=0, min_scale=0):
+            files["top"] = outp[:-4] + ".top.png"
+    return {"pct": round(pct, 2), "bbox": list(bbox) if bbox else None,
+            "same": content_same and not top_changed, "content_same": content_same, "status_bar": top_changed,
+            "phash_same": same_hash, "note": note, "files": files}
+
+
+def frames_alike(p, q, mask_top):
+    """Two frames look the same: one size, < 0.5% of pixels differ, status bar too."""
+    Image = pil()
+    with Image.open(p) as x, Image.open(q) as y:
+        if x.size != y.size:
+            return False
+        _, _, pct, _, top = px_diff(x.convert("RGB"), y.convert("RGB"), mask_top)
+    return pct < 0.5 and top < 0.005
+
+
+def same_change(r, o):
+    """Two changed pairs from different API levels changed the same way: percent, area size, status bar, UI diff.
+
+    Frames of different API levels differ by layout, so the change is compared, not the pixels.
+    """
+    if r["same"] or o["same"] or r["status_bar"] != o["status_bar"] or r["ui"] != o["ui"] or r["note"] or o["note"]:
+        return False
+    if abs(r["pct"] - o["pct"]) > 0.3:
+        return False
+    if not r["bbox"] or not o["bbox"]:
+        return r["bbox"] == o["bbox"]
+    (w1, h1), (w2, h2) = [(b[2] - b[0], b[3] - b[1]) for b in (r["bbox"], o["bbox"])]
+    return abs(w1 - w2) <= 0.02 * max(w1, w2) + 4 and abs(h1 - h2) <= 0.02 * max(h1, h2) + 4
 
 
 def cmd_diff(a):
@@ -1482,47 +1637,102 @@ def cmd_diff(a):
         die("no current run")
     frames = scan_run(run)
     out_dir = os.path.join(run, "diff")
-    res = []
-    lines = []
+    for old in glob.glob(os.path.join(out_dir, "**", "*.png"), recursive=True) + [os.path.join(out_dir, "diff.json")]:
+        if os.path.exists(old):
+            os.remove(old)
+    if not any("after" in v for k in frames for v in frames[k].values()):
+        print("no after frames — capture them with adbm run or adbm shot" +
+              (" (only before frames so far)" if frames else ""))
+        return 1
+    has_pairs = any(len(v) == 2 for k in frames for v in frames[k].values())
+    res, lines = [], []
+
+    def single(api, group, name, label, missing, twin=None):
+        res.append({"api": api, "group": group, "name": name, "missing": missing, "same": None,
+                    "pct": None, "diff": None, "ui": [], "same_as_api": twin})
+        if twin:
+            lines.append(f"{label}: ≈ api{twin}")
+        elif missing == "before":
+            lines.append(f"{label}: " + ("no before frame — judge it by the checklist" if has_pairs else "after only"))
+        else:
+            lines.append(f"{label}: no after frame")
+
     for key in sorted(frames, key=frame_sort_key):
         group, name = key
+        done = {}
         for api in sorted(frames[key]):
             v = frames[key][api]
-            if "before" not in v or "after" not in v:
+            label = f"api{api}/" + (group + "/" if group else "") + name
+            if "after" not in v:
+                single(api, group, name, label, "after")
+                continue
+            if "before" not in v:
+                # after-only frames: a twin is a frame that looks the same on an earlier API level
+                twin = None if has_pairs else next(
+                    (o for o in sorted(done) if done[o] is None
+                     and frames_alike(frames[key][o]["after"], v["after"], a.mask_top)), None)
+                if not has_pairs:
+                    done[api] = twin
+                single(api, group, name, label, "before", twin)
                 continue
             outp = os.path.join(out_dir, f"api{api}", *(group.split("/") if group else []), name + ".png")
-            r = diff_pair(v["before"], v["after"], outp, a.mask_top)
-            r.update({"api": api, "group": group, "name": name,
-                      "diff": os.path.relpath(outp, run) if not r["same"] else None,
-                      "ui": ui_diff(v["before"], v["after"])})
+            r = diff_pair(v["before"], v["after"], outp, a.mask_top, a.full)
+            files = r.pop("files")
+            r["ui"] = ui_diff(v["before"], v["after"])
+            twin = next((o for o in sorted(done) if done[o][0] is None and same_change(r, done[o][1])), None)
+            done[api] = (twin, r)
+            if twin:
+                for f in files.values():
+                    os.remove(f)
+                files = {}
+            r.update({"api": api, "group": group, "name": name, "same_as_api": twin, "missing": None,
+                      "diff": os.path.relpath(files["diff"], run) if "diff" in files else None,
+                      "crop": os.path.relpath(files["crop"], run) if "crop" in files else None,
+                      "top": os.path.relpath(files["top"], run) if "top" in files else None})
             res.append(r)
-            label = f"api{api}/" + (group + "/" if group else "") + name
             if r["same"]:
                 s = "unchanged"
+            elif twin:
+                s = f"≈ api{twin}: the same change"
+            elif r["content_same"]:
+                s = "status bar only"
             else:
                 bb = r["bbox"]
                 s = f"{r['pct']:.1f}% @{bb[0]},{bb[1]}-{bb[2]},{bb[3]}"
+                if r["status_bar"]:
+                    s += " · status bar differs"
                 if r["phash_same"]:
                     s += " (looks the same)"
             if r["note"]:
                 s += " · " + r["note"]
-            if r["ui"]:
+            if r["ui"] and not twin:
                 s += " · " + "; ".join(r["ui"][:3]) + (f" (+{len(r['ui']) - 3})" if len(r["ui"]) > 3 else "")
             lines.append(f"{label}: {s}")
-    if not res:
-        print("no before/after pairs — capture frames with --as before and --as after")
-        return 1
     os.makedirs(out_dir, exist_ok=True)
     json.dump(res, open(os.path.join(out_dir, "diff.json"), "w"), ensure_ascii=False, indent=1)
-    changed = [r for r in res if not r["same"]]
-    show = lines if a.all else [l for l, r in zip(lines, res) if not r["same"]]
+    show = lines if a.all else [l for l, r in zip(lines, res) if r["same"] is not True]
     for l in show[: a.limit]:
         print(l)
     if len(show) > a.limit:
-        print(f"… {len(show) - a.limit} more → {rel(os.path.join(out_dir, 'diff.json'))}")
-    print(f"pairs {len(res)}, changed {len(changed)}, unchanged {len(res) - len(changed)} · "
-          f"diff images: {rel(out_dir)}/")
-    stats_add(run, pairs=len(res), pairs_changed=len(changed))
+        print(f"… {len(show) - a.limit} more — adbm diff --limit {len(show)}")
+    singles = [r for r in res if r["missing"]]
+    if not has_pairs:
+        twins = sum(1 for r in singles if r["same_as_api"])
+        n = sum(1 for r in singles if r["missing"] == "before")
+        print(f"after only: {n} frames, no before pairs" + (f" ({twins} same as another API)" if twins else "")
+              + " · judge them by the checklist")
+        stats_add(run, pairs=0, frames_after_only=n)
+        return 0
+    pairs = [r for r in res if not r["missing"]]
+    changed = [r for r in pairs if not r["same"]]
+    tw = sum(1 for r in changed if r["same_as_api"])
+    nb = sum(1 for r in singles if r["missing"] == "before")
+    na = len(singles) - nb
+    print(f"pairs {len(pairs)}, changed {len(changed)}" + (f" ({tw} same as another API)" if tw else "")
+          + f", unchanged {len(pairs) - len(changed)}"
+          + (f", no before {nb}" if nb else "") + (f", no after {na}" if na else "")
+          + f" · diff images: {rel(out_dir)}/")
+    stats_add(run, pairs=len(pairs), pairs_changed=len(changed))
     return 0
 
 
@@ -1661,7 +1871,7 @@ def collage(frames, keys, apis, out, max_side=2000, verdicts=None):
     has_before = any("before" in frames[k][a] for k in keys for a in frames[k])
     per = 2 if has_before else 1
     best = None
-    for w in range(300, 99, -10):
+    for w in range(240, 99, -10):
         th = int(w * ratio)
         bw = len(apis) * (per * w + (per - 1) * 2 + gap) + gap
         bh = hdr + th + gap + (16 if len(apis) > 1 else 0)
@@ -1763,6 +1973,10 @@ def cmd_board(a):
             diffs[(r["group"], r["name"], r["api"])] = r
     except Exception:
         pass
+    # the contact sheet shows only what the subagent judges: changed pairs or after-only frames
+    sheet_keys = keys
+    if diffs and not a.all:
+        sheet_keys = [k for k in keys if any(r["same"] is not True for kk, r in diffs.items() if kk[:2] == k)]
     items = []
     for k in keys:
         for api in sorted(frames[k]):
@@ -1774,6 +1988,9 @@ def cmd_board(a):
                 "after": os.path.relpath(v["after"], out) if "after" in v else None,
                 "diff": os.path.relpath(os.path.join(run, d["diff"]), out) if d and d.get("diff") else None,
                 "pct": d["pct"] if d else None, "same": d["same"] if d else None,
+                "same_as_api": d.get("same_as_api") if d else None,
+                "crop": os.path.relpath(os.path.join(run, d["crop"]), out) if d and d.get("crop") else None,
+                "top": os.path.relpath(os.path.join(run, d["top"]), out) if d and d.get("top") else None,
                 "ui": d["ui"] if d else [], "verdict": verdicts.get(k),
                 "api_verdict": (per_api.get(k + (api,)) or per_api.get(k + (None,)) or (None, ""))[0],
                 "verdict_text": (per_api.get(k + (api,)) or per_api.get(k + (None,)) or (None, ""))[1],
@@ -1782,14 +1999,15 @@ def cmd_board(a):
     summary = []
     for f in glob.glob(os.path.join(out, "00-summary*.png")):
         os.remove(f)
-    if pairs <= a.summary_max:
+    sheet_apis = sorted({api for k in sheet_keys for api in frames[k]})
+    if sheet_keys and sum(len(frames[k]) for k in sheet_keys) <= a.summary_max:
         p = os.path.join(out, "00-summary.png")
-        size = collage(frames, keys, apis, p, verdicts=verdicts)
+        size = collage(frames, sheet_keys, sheet_apis, p, verdicts=verdicts)
         if size:
             summary.append((p, size))
-    if not summary:
-        for api in apis:
-            ks = [k for k in keys if api in frames[k]]
+    if sheet_keys and not summary:
+        for api in sheet_apis:
+            ks = [k for k in sheet_keys if api in frames[k]]
             for page in range(0, len(ks), 24):
                 part = ks[page:page + 24]
                 suffix = f"-api{api}" + (f"-{page // 24 + 1}" if len(ks) > 24 else "")
@@ -1819,7 +2037,18 @@ def cmd_board(a):
     print(f"board: {rel(os.path.join(out, 'index.html'))} · pairs {pairs} · API {','.join(map(str, apis))}")
     for p, (w, h) in summary:
         tok = -(-w // 28) * -(-h // 28)
-        print(f"contact sheet: {rel(p)} {w}x{h} (~{tok} tokens)")
+        part = f", {len(sheet_keys)} of {len(keys)} frames" if len(sheet_keys) < len(keys) else ""
+        print(f"contact sheet: {rel(p)} {w}x{h} (~{tok} tokens{part})")
+    if not sheet_keys:
+        print("contact sheet: none — every pair is unchanged")
+    if notes and not re.search(r"(?m)^#+\s.*adbm-eyes", notes):
+        print("warning: notes.md has no adbm-eyes section — the board shows no verdict")
+    elif notes:
+        judged = [i for i in items if (i["group"], i["name"], i["api"]) in diffs and i["same"] is not True]
+        left = [i for i in judged if not i["api_verdict"]]
+        if left:
+            print(f"warning: {len(left)} changed frames without a verdict, e.g. "
+                  + ", ".join(f"api{i['api']}/" + (i["group"] + "/" if i["group"] else "") + i["name"] for i in left[:3]))
     if a.open:
         subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", os.path.join(out, "index.html")],
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -1917,6 +2146,10 @@ def main():
     p = add("look", cmd_look, "downscaled frame for the agent: 540 px, --small 360, --crop", "one")
     p.add_argument("--small", action="store_true")
     p.add_argument("--crop", metavar="x0,y0,x1,y1")
+    p = add("thumb", cmd_thumb, "downscaled copy or crop of a saved frame for viewing: 540 px wide, crop 1:1 up to --w")
+    p.add_argument("frame")
+    p.add_argument("--crop", metavar="x0,y0,x1,y1", help="area in frame pixels")
+    p.add_argument("--w", type=int, default=540, help="max width, px")
     p = add("shot", cmd_shot, "capture a frame into the run folder (not into the context)", "multi")
     p.add_argument("name")
     p.add_argument("--as", dest="as_", choices=VERSIONS)
@@ -1941,7 +2174,8 @@ def main():
     p.add_argument("--run")
     p.add_argument("--all", action="store_true", help="also show unchanged pairs")
     p.add_argument("--limit", type=int, default=30)
-    p.add_argument("--mask-top", type=float, default=0.04, help="share of the height masked for the status bar")
+    p.add_argument("--mask-top", type=float, default=0.04, help="share of the height compared apart as the status bar")
+    p.add_argument("--full", action="store_true", help="diff images in full size (default: 540 px wide)")
     p = add("record", cmd_record, "screenrecord video and a contact sheet", "one")
     p.add_argument("name")
     p.add_argument("--seconds", type=int, default=6)
@@ -1954,6 +2188,7 @@ def main():
     p.add_argument("--out", help="where to write the board (default: the run folder)")
     p.add_argument("--open", action="store_true")
     p.add_argument("--summary-max", type=int, default=24)
+    p.add_argument("--all", action="store_true", help="contact sheet with unchanged pairs too")
 
     argv = sys.argv[1:]
     tail = []

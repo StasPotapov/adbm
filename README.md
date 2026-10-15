@@ -26,10 +26,10 @@ so screenshots never enter the agent's context:
 | `adbm new <slug>`, `adbm status` | start a run folder, show the current run and counters |
 | `adbm install <apk> --as before\|after` | installs an APK on all API levels in parallel |
 | `adbm ui`, `tap`, `launch`, `type`, `key`, `swipe` | navigation by UI tree text |
-| `adbm shot`, `look`, `annotate`, `record` | frames into the run folder, a downscaled frame, video |
+| `adbm shot`, `look`, `thumb`, `annotate`, `record` | frames into the run folder, a downscaled frame or crop, video |
 | `adbm run <flow.yaml> --matrix …` | a Maestro flow on all API levels in parallel, theme and navigation matrix |
 | `adbm save-flow` | manual session → Maestro flow |
-| `adbm diff` | pixel diff and UI tree diff |
+| `adbm diff` | pixel diff (540 px, crops, status bar apart), UI tree diff, `≈ apiN` for the same change on another API |
 | `adbm board` | HTML board and `00-summary.png` contact sheet |
 
 Subfolders follow the order of axes in `--matrix`. A run is stored in `<project>/build/adbm/<date-time>-<slug>/`:

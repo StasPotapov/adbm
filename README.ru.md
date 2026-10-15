@@ -25,10 +25,10 @@ Claude Code skill и CLI `adbm` для визуальной проверки And
 | `adbm new <slug>`, `adbm status` | начать папку прогона, показать текущий прогон и счётчики |
 | `adbm install <apk> --as before\|after` | ставит APK на все API параллельно |
 | `adbm ui`, `tap`, `launch`, `type`, `key`, `swipe` | навигация по тексту дерева UI |
-| `adbm shot`, `look`, `annotate`, `record` | кадры в папку прогона, уменьшенный кадр, видео |
+| `adbm shot`, `look`, `thumb`, `annotate`, `record` | кадры в папку прогона, уменьшенный кадр или фрагмент, видео |
 | `adbm run <flow.yaml> --matrix …` | Maestro flow на всех API параллельно, матрица тем и навигации |
 | `adbm save-flow` | ручная сессия → Maestro flow |
-| `adbm diff` | пиксельный дифф и дифф дерева UI |
+| `adbm diff` | пиксельный дифф (540 px, кропы, статус-бар отдельно), дифф дерева UI, `≈ apiN` для того же изменения на другом API |
 | `adbm board` | HTML-борд и коллаж `00-summary.png` |
 
 Подпапки идут в порядке осей `--matrix`. Прогон ложится в `<проект>/build/adbm/<дата-время>-<slug>/`:

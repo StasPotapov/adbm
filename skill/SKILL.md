@@ -53,15 +53,16 @@ A 1080×2400 image costs ~3350 tokens, a line of the UI tree ~15. So:
 
 1. **Navigate by text only.** Read the screen with `adbm ui` or `adbm ui --find <text>`.
    Tap by selector: `adbm tap "Close"`. Do not guess coordinates from an image.
-2. **`adbm diff` decides "did it change"**, not you. It reports the percent and area of change.
-   For frames from `adbm shot` it also reports element shifts (`"Close" ↓48 px`): the UI tree is
-   saved next to the frame. Maestro frames have no tree. Nobody looks at unchanged pairs.
+2. **`adbm diff` decides "did it change"**, not you. It reports the percent and area of change,
+   compares the status bar apart, and marks a pair `≈ apiN` when it changed the same way as on
+   another API level. For frames from `adbm shot` it also reports element shifts (`"Close" ↓48 px`):
+   the UI tree is saved next to the frame. Maestro frames have no tree. Nobody looks at unchanged pairs.
 3. **`adbm shot` and `adbm run` only save frames.** Do not open files from `api*/` with Read.
 4. **If you cannot do without an image** — `adbm look` (540 px, ~860 tokens), `--small` (360 px, ~380),
    `--crop x0,y0,x1,y1` for a fragment. The output has `scale`: screen coordinate = image
    coordinate / scale. More than 3 `look` calls per task is a reason to stop and think.
-5. **The `adbm-eyes` subagent judges the frames** (see "Check"). It looks at the contact sheet
-   and the diff and returns up to 10 lines.
+5. **The `adbm-eyes` subagent judges the frames** (see "Check"). It looks at the contact sheet,
+   diff crops, the 540 px diff and `adbm thumb` copies, and returns up to 10 lines.
 6. **Command output is short.** Details are in `<run>/logs/`. Read a log only on failure
    and only the part you need: `tail`, `grep`.
 
@@ -166,8 +167,8 @@ You get an mp4 and a contact sheet `-sheet.png` for the subagent.
 ### 5. Check
 
 ```bash
-"$ADBM" diff      # one line per changed pair, diff/*.png, diff/diff.json
-"$ADBM" board     # index.html + manifest.js + 00-summary.png (if pairs ≤ 24, else one PNG per API)
+"$ADBM" diff      # one line per changed pair; diff/*.png 540 px, *.crop.png, *.top.png, diff.json
+"$ADBM" board     # index.html + 00-summary.png of changed pairs (≤ 24 frames, else one PNG per API)
 ```
 
 Then start the `adbm-eyes` subagent. If ADBM is installed as a plugin, it is the `adbm:adbm-eyes` agent.
@@ -178,9 +179,13 @@ the content of `agents/adbm-eyes.md` without frontmatter. In both cases add this
 Task: <what was changed and what should come out>
 Checklist: <2–6 items>
 Run: <absolute path to the run folder>
+ADBM: <absolute path to the adbm CLI>
 Changed pairs:
 <adbm diff output>
 ```
+
+Frames only "after" (one build, no "before"): `adbm diff` prints `after only: N frames`, and the
+subagent judges every frame by the checklist.
 
 The subagent appends its verdict to `<run>/notes.md`. Then run `"$ADBM" board` again:
 the board colours the frames. The statuses:
