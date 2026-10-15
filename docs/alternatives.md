@@ -48,13 +48,24 @@ sets the scenario: it is the same in every matrix cell, so frames can be compare
 
 ## How ADBM differs
 
-We found no tool with this whole combination:
+Other tools give the agent taps, screenshots or a comparison with reference images. ADBM runs the whole check
+of a change and gives you a ready result. You fix a bug or add a component. The agent runs the scenario
+on the "before" and "after" builds and compares the frames. Then you open one page and see whether the change works
+the way you meant.
 
-- **Two builds on one scenario.** No reference images, tests or `@Preview` needed.
-- **A matrix** of API × theme × navigation × font scale in parallel on emulators. `prep` turns off animations and turns on demo mode.
-- **A diff without a model.** The status bar is compared apart, `≈ apiN` marks the same change on another API level.
-- **A cheap verdict.** A subagent writes the verdict against the task checklist, and the main agent gets text without images.
-- **Token measurement:** `stats.json`, `tools/measure-session.py` and the guard hook.
+- **The agent spends few tokens.** Full-size frames never enter the agent's context: a hook blocks reading them.
+  The agent navigates by the text of the UI tree. Python computes what changed, pixel by pixel, without a model.
+  A subagent on a cheap model looks at the frames and returns text to the agent. The run's `stats.json` shows the cost.
+- **The agent does everything itself.** It boots the emulators, installs both builds and runs one Maestro flow
+  on all API levels in parallel. The scenario runs in every cell of the API × theme × navigation × font scale matrix.
+  `prep` turns off animations and turns on demo mode, so frames differ only because of your change.
+- **No reference images.** ADBM compares two builds on one scenario. You do not prepare reference images,
+  test code or `@Preview`.
+- **The result is on one page.** The board shows the changed frames and a verdict for each: EXPECTED, PROBLEM or REVIEW.
+  The subagent writes the verdict against your task checklist. You can view a pair side by side, with a slider, as a diff,
+  as the changed area only or as the status bar. When the same change is on another API level, the board marks it `≈ API N`.
+
+Other tools have each part separately. We found no tool with the whole combination.
 
 ## Where ADBM is weaker
 
