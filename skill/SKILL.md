@@ -66,7 +66,12 @@ A 1080×2400 image costs ~3350 tokens, a line of the UI tree ~15. So:
 6. **Command output is short.** Details are in `<run>/logs/`. Read a log only on failure
    and only the part you need: `tail`, `grep`.
 
-`<run>/stats.json` counts frames taken and images sent to the main context.
+`<run>/stats.json` counts frames taken, images sent to the main context and characters of `adbm`
+output. `adbm status` prints the estimate in tokens.
+
+If the guard hook is installed (plugin, or `settings.json` per the README), it denies `Read` of a
+full-size frame from `api*/` and of a raw XML dump from `logs/`. On a denial, do what its text says.
+Without the hook the rule is yours to keep.
 
 ## Workflow
 

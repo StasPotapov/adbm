@@ -54,6 +54,21 @@ python3 -m pip install Pillow
 
 CLI работает и без Claude Code: `ln -s ~/dev/adbm/skill/bin/adbm /usr/local/bin/adbm`.
 
+**Хук-ограждение.** `skill/hooks/adbm-guard.py` запрещает `Read` полноразмерного кадра и сырого
+дампа UI. Так агент не потратит ~3350 токенов на один скриншот случайно. Плагин ставит хук сам
+(`skill/hooks/hooks.json`). При установке симлинком добавь его в `~/.claude/settings.json`:
+
+```json
+"hooks": {
+  "PreToolUse": [{ "matcher": "Read", "hooks": [{ "type": "command",
+    "command": "f=~/.claude/skills/adbm/hooks/adbm-guard.py; [ -f \"$f\" ] || exit 0; exec python3 \"$f\"" }] }]
+}
+```
+
+**Замер сессии.** `tools/measure-session.py <transcript.jsonl>` показывает, сколько сессия
+Claude Code потратила на `adbm`: символы вывода по командам и прочитанные картинки.
+`adbm status` даёт ту же оценку для текущего прогона из `stats.json`.
+
 ## Пример
 
 ```bash

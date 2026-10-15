@@ -6,5 +6,6 @@
   "license": "MIT",
   "keywords": ["android", "adb", "emulator", "maestro", "screenshot", "visual-testing"],
   "skills": ["./skill/"],
-  "agents": ["./skill/agents/adbm-eyes.md"]
+  "agents": ["./skill/agents/adbm-eyes.md"],
+  "hooks": "./skill/hooks/hooks.json"
 }

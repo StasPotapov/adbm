@@ -11,7 +11,9 @@ Maestro for flows. ffmpeg for record.
 """
 import argparse
 import concurrent.futures as cf
+import contextlib
 import datetime as dt
+import fcntl
 import functools
 import glob
 import hashlib
@@ -46,6 +48,7 @@ TUNE = {
 LOOK_W = {"normal": 540, "small": 360}
 DIFF_W = 540
 _lock = threading.Lock()
+USED_RUN = []  # the run folder a command worked with: its output size goes to that run's stats.json
 
 
 # ---------------------------------------------------------------- utilities
@@ -162,6 +165,7 @@ def current_run(create=True, slug="manual", new=False):
         name = open(cur).read().strip()
         p = os.path.join(base, name)
         if name and os.path.isdir(p):
+            USED_RUN[:] = [p]
             return p
     if not create:
         return None
@@ -180,6 +184,7 @@ def new_run(slug):
             shutil.copy(os.path.join(prev, f), os.path.join(p, f))
     with open(os.path.join(base, ".current"), "w") as f:
         f.write(name)
+    USED_RUN[:] = [p]
     gi = os.path.join(base, ".gitignore")
     if not os.path.exists(gi):
         with open(gi, "w") as f:
@@ -206,13 +211,26 @@ def resolve_run(arg, create=True, slug="manual"):
         p = arg if os.path.isabs(arg) or os.path.exists(arg) else os.path.join(runs_dir(), arg)
         if not os.path.isdir(p):
             die(f"no run folder: {arg}")
+        USED_RUN[:] = [os.path.abspath(p)]
         return os.path.abspath(p)
     return current_run(create=create, slug=slug)
 
 
-def stats_add(run, **inc):
+@contextlib.contextmanager
+def file_lock(path):
+    """Lock between adbm processes: a background `adbm run` and `adbm ui` write one stats.json."""
+    with _lock, open(path + ".lock", "a") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)
+
+
+def stats_add(run, _set=None, **inc):
+    """Add numbers to stats.json, merge dicts; _set — values that replace the old ones."""
     p = os.path.join(run, "stats.json")
-    with _lock:
+    with file_lock(p):
         try:
             st = json.load(open(p))
         except Exception:
@@ -220,9 +238,43 @@ def stats_add(run, **inc):
         for k, v in inc.items():
             if isinstance(v, (int, float)):
                 st[k] = st.get(k, 0) + v
+            elif isinstance(v, dict):
+                sub = st.setdefault(k, {})
+                for kk, vv in v.items():
+                    sub[kk] = sub.get(kk, 0) + vv
             else:
                 st[k] = v
-        json.dump(st, open(p, "w"), ensure_ascii=False, indent=1)
+        st.update(_set or {})
+        tmp = p + f".{os.getpid()}.tmp"
+        json.dump(st, open(tmp, "w"), ensure_ascii=False, indent=1)
+        os.replace(tmp, p)
+
+
+class CountingStream:
+    """A stdout/stderr wrapper that counts the characters written: what the agent reads."""
+
+    def __init__(self, stream):
+        self.stream, self.n = stream, 0
+
+    def write(self, text):
+        self.n += len(text)
+        return self.stream.write(text)
+
+    def __getattr__(self, name):
+        return getattr(self.stream, name)
+
+
+def record_context(a, chars):
+    """Add a command's output size to stats.json of the run it worked with; never fails the command.
+
+    A command started by `adbm record … -- <command>` writes to a log, not to the agent: not counted.
+    """
+    if not USED_RUN or os.environ.get("ADBM_NO_STATS") or not os.path.isdir(USED_RUN[0]):
+        return
+    try:
+        stats_add(USED_RUN[0], context_chars=chars, commands=1, chars_by_command={a.cmd: chars})
+    except Exception:
+        pass
 
 
 def session_log(entry):
@@ -1638,7 +1690,7 @@ def cmd_diff(a):
     frames = scan_run(run)
     out_dir = os.path.join(run, "diff")
     for old in glob.glob(os.path.join(out_dir, "**", "*.png"), recursive=True) + [os.path.join(out_dir, "diff.json")]:
-        if os.path.exists(old):
+        with contextlib.suppress(FileNotFoundError):
             os.remove(old)
     if not any("after" in v for k in frames for v in frames[k].values()):
         print("no after frames — capture them with adbm run or adbm shot" +
@@ -1683,7 +1735,8 @@ def cmd_diff(a):
             done[api] = (twin, r)
             if twin:
                 for f in files.values():
-                    os.remove(f)
+                    with contextlib.suppress(FileNotFoundError):
+                        os.remove(f)
                 files = {}
             r.update({"api": api, "group": group, "name": name, "same_as_api": twin, "missing": None,
                       "diff": os.path.relpath(files["diff"], run) if "diff" in files else None,
@@ -1721,7 +1774,7 @@ def cmd_diff(a):
         n = sum(1 for r in singles if r["missing"] == "before")
         print(f"after only: {n} frames, no before pairs" + (f" ({twins} same as another API)" if twins else "")
               + " · judge them by the checklist")
-        stats_add(run, pairs=0, frames_after_only=n)
+        stats_add(run, _set={"pairs": 0, "pairs_changed": 0, "frames_after_only": n})
         return 0
     pairs = [r for r in res if not r["missing"]]
     changed = [r for r in pairs if not r["same"]]
@@ -1732,7 +1785,7 @@ def cmd_diff(a):
           + f", unchanged {len(pairs) - len(changed)}"
           + (f", no before {nb}" if nb else "") + (f", no after {na}" if na else "")
           + f" · diff images: {rel(out_dir)}/")
-    stats_add(run, pairs=len(pairs), pairs_changed=len(changed))
+    stats_add(run, _set={"pairs": len(pairs), "pairs_changed": len(changed), "frames_after_only": 0})
     return 0
 
 
@@ -1757,7 +1810,8 @@ def cmd_record(a):
         time.sleep(1)
         if a.during:
             with open(base + ".cmd.log", "w") as log:
-                cmd_rc = subprocess.call(a.during, stdout=log, stderr=subprocess.STDOUT)
+                cmd_rc = subprocess.call(a.during, stdout=log, stderr=subprocess.STDOUT,
+                                         env={**os.environ, "ADBM_NO_STATS": "1"})
         rec.wait()
         time.sleep(1)
         adb(s, "pull", "/sdcard/adbm-rec.mp4", base + ".mp4", timeout=120)
@@ -2065,6 +2119,15 @@ def cmd_new(a):
     return 0
 
 
+def context_line(st):
+    """Estimate of what adbm put into the agent context: text ~4 characters per token, images by size."""
+    s = f"context: text ~{st.get('context_chars', 0) // 4} tokens ({st.get('commands', 0)} commands)"
+    s += f", images ~{st.get('context_image_tokens', 0)} tokens ({st.get('context_images', 0)})"
+    if st.get("thumb_images"):
+        s += f" · subagent thumbs ~{st.get('thumb_image_tokens', 0)} tokens ({st['thumb_images']})"
+    return s
+
+
 def cmd_status(a):
     run = current_run(create=False)
     if not run:
@@ -2077,7 +2140,13 @@ def cmd_status(a):
         st = {}
     print(f"run: {rel(run)} · as={default_as(run, a)}")
     print(f"frames {sum(len(v) for k in frames for v in frames[k].values())}, pairs {sum(1 for k in frames for v in frames[k].values() if len(v) == 2)}")
-    print("stats: " + json.dumps(st, ensure_ascii=False))
+    counts = [f"{k} {st[k]}" for k in ("frames", "pairs", "pairs_changed", "frames_after_only") if k in st]
+    if counts:
+        print("stats: " + ", ".join(counts))
+    print(context_line(st))
+    top = sorted((st.get("chars_by_command") or {}).items(), key=lambda kv: -kv[1])[:5]
+    if top:
+        print("text by command: " + ", ".join(f"{k} ~{v // 4}" for k, v in top))
     return 0
 
 
@@ -2197,10 +2266,15 @@ def main():
         argv, tail = argv[:i], argv[i + 1:]
     a = P.parse_args(argv)
     a.during = tail
+    out, err = CountingStream(sys.stdout), CountingStream(sys.stderr)
+    sys.stdout, sys.stderr = out, err
     try:
         sys.exit(a.fn(a) or 0)
     except KeyboardInterrupt:
         sys.exit(130)
+    finally:
+        sys.stdout, sys.stderr = out.stream, err.stream
+        record_context(a, out.n + err.n)
 
 
 if __name__ == "__main__":

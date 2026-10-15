@@ -55,6 +55,21 @@ python3 -m pip install Pillow
 
 The CLI works without Claude Code too: `ln -s ~/dev/adbm/skill/bin/adbm /usr/local/bin/adbm`.
 
+**Guard hook.** `skill/hooks/adbm-guard.py` denies `Read` of a full-size frame or a raw UI dump,
+so an agent cannot spend ~3350 tokens on one screenshot by accident. As a plugin, ADBM registers it
+itself (`skill/hooks/hooks.json`). With the symlink install, add it to `~/.claude/settings.json`:
+
+```json
+"hooks": {
+  "PreToolUse": [{ "matcher": "Read", "hooks": [{ "type": "command",
+    "command": "f=~/.claude/skills/adbm/hooks/adbm-guard.py; [ -f \"$f\" ] || exit 0; exec python3 \"$f\"" }] }]
+}
+```
+
+**Measuring a session.** `tools/measure-session.py <transcript.jsonl>` prints what a Claude Code
+session spent on `adbm`: characters of output per command and images read.
+`adbm status` prints the same estimate for the current run from `stats.json`.
+
 ## Example
 
 ```bash

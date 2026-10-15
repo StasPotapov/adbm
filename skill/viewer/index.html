@@ -140,6 +140,7 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
   const st = M.stats || {};
   if (st.frames != null) meta.push(["frames captured", st.frames]);
   meta.push(["images in main context", (st.context_images || 0) + (st.context_image_tokens ? " (~" + st.context_image_tokens + " tokens)" : "")]);
+  if (st.context_chars) meta.push(["adbm output text", "~" + Math.round(st.context_chars / 4) + " tokens, " + (st.commands || 0) + " commands"]);
   meta.push(["built", M.created.replace("T", " ")]);
   $("#meta").innerHTML = meta.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("");
   $("#summary").innerHTML = (M.summary || []).map((p) => `<a href="${esc(p)}" target="_blank">${esc(p)}</a>`).join("<br>");
