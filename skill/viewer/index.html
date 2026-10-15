@@ -135,8 +135,7 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
   $("#meta").innerHTML = meta.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("");
   $("#summary").innerHTML = (M.summary || []).map((p) => `<a href="${esc(p)}" target="_blank">${esc(p)}</a>`).join("<br>");
   const VCLS = { expected: "ok", problem: "bug", review: "look" };
-  const VWORD = { EXPECTED: "expected", PROBLEM: "problem", REVIEW: "review", "ОЖИДАЕМО": "expected", "ПРОБЛЕМА": "problem", "ПОСМОТРЕТЬ": "review" };
-  $("#notes").innerHTML = M.notes ? esc(M.notes).replace(/\b(EXPECTED|PROBLEM|REVIEW)\b|(ОЖИДАЕМО|ПРОБЛЕМА|ПОСМОТРЕТЬ)/g, (v) => `<span class="${VCLS[VWORD[v]]}">${v}</span>`)
+  $("#notes").innerHTML = M.notes ? esc(M.notes).replace(/\b(EXPECTED|PROBLEM|REVIEW)\b/g, (v) => `<span class="${VCLS[v.toLowerCase()]}">${v}</span>`)
     : '<span style="color:var(--muted)">no notes.md yet — the adbm-eyes subagent writes the verdict</span>';
 
   const apiOn = new Set(M.apis);

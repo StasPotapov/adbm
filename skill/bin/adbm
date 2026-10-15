@@ -1173,17 +1173,15 @@ def save_duration(flow, api, seconds):
         json.dump(d, open(os.path.join(CACHE, "durations.json"), "w"), indent=1)
 
 
-ANR = re.compile(r"isn.t responding|не отвечает|keeps stopping|has stopped|остановлено|снова произошла ошибка", re.I)
-
-
 def device_diagnosis(serial, nodes):
     """What happened to the device: offline, an ANR/crash window, the current window."""
     code, out, _ = sh([adb_bin(), "-s", serial, "get-state"], timeout=10)
     if code != 0 or out.strip() != "device":
         return f"device {serial} is not responding ({out.strip() or 'no answer'}) — adbm devices, restart the emulator"
-    hit = [n["text"] or n["desc"] for n in nodes if ANR.search(n["text"] + " " + n["desc"])]
-    if hit:
-        return f"system dialog on screen: \"{trunc(hit[0], 50)}\" — the app hung or crashed"
+    # crash and ANR dialogs are recognised by their button ids (aerr_close, aerr_wait…): ids do not depend on the device language
+    if any(n["rid"].startswith("android:id/aerr_") for n in nodes):
+        title = next((n["text"] for n in nodes if n["rid"] == "android:id/alertTitle"), "")
+        return f"system error dialog on screen: \"{trunc(title, 50)}\" — the app hung or crashed"
     focus = ashell(serial, "dumpsys window | grep -m1 mCurrentFocus", timeout=15)
     m = re.search(r"\S+/\S+(?=})", focus)
     return f"focus: {m.group(0) if m else focus.strip()[:80]}"
@@ -1664,18 +1662,13 @@ def collage(frames, keys, apis, out, max_side=2000, verdicts=None):
     return W, H
 
 
-VERDICTS = {"EXPECTED": "expected", "PROBLEM": "problem", "REVIEW": "review",
-            "ОЖИДАЕМО": "expected", "ПРОБЛЕМА": "problem", "ПОСМОТРЕТЬ": "review",
-            "PASS": "expected", "FAIL": "problem"}
+VERDICTS = {"EXPECTED": "expected", "PROBLEM": "problem", "REVIEW": "review"}
 VERDICT_RANK = {"expected": 0, "review": 1, "problem": 2}
 VERDICT_COLOR = {"expected": (120, 210, 120), "review": (240, 190, 80), "problem": (240, 110, 110)}
 
 
 def read_verdicts(run):
-    """notes.md lines like `PROBLEM api35/group/name — …` → {(group,name): verdict}.
-
-    Keys are expected/problem/review; Russian words and PASS/FAIL from old notes.md are synonyms.
-    """
+    """notes.md lines like `PROBLEM api35/group/name — …` → {(group,name): verdict}."""
     res = {}
     p = os.path.join(run, "notes.md")
     if not os.path.exists(p):
