@@ -1,6 +1,6 @@
 {
   "name": "adbm",
-  "description": "Android Debug Bridge Matrix: visual checks of Android apps by an agent — emulators by API level, Maestro flows in parallel, before/after board and contact sheet, low token usage.",
+  "description": "Android Debug Bridge Matrix: an agent drives Android devices and emulators instead of raw adb at low token cost — screen as text, taps, input, apps, logs, screenshots — plus visual checks: emulators by API level, Maestro flows in parallel, before/after board and contact sheet.",
   "author": {
     "name": "Stas Potapov"
   },

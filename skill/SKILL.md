@@ -1,7 +1,7 @@
 ---
 name: adbm
-description: "Checks Android apps on emulators as an agent while saving tokens: boots emulators for the needed API levels, installs \"before\" and \"after\" builds, navigates the UI by tree text, runs Maestro flows on several API levels in parallel, builds an HTML board and a \"before | after\" PNG contact sheet, and a subagent writes the verdict. Also drives a device over adb: taps, text input, app launch, logs, screenshots. - \"check it on the emulator\", \"take before/after screenshots\", \"see how it looks on API 28/33/35\", \"run the flow in dark theme and gesture navigation\", \"check the bottom sheet / insets / navbar change\", \"launch the app on the emulator\", \"what is on the screen\", adb commands to a device."
-argument-hint: "<what to check> [--api 28,33,35]"
+description: "Drives an Android device or emulator for the agent instead of raw adb, at a fraction of the tokens: reads the screen as compact text, taps by text, types, swipes, presses keys, installs, launches and stops apps, reads logcat and crashes, opens deep links, grants permissions, copies files, takes screenshots. On top of that it checks how the app looks: boots emulators for the needed API levels, runs Maestro flows on them in parallel with a theme and navigation matrix, compares \"before\" and \"after\" builds on an HTML board, and a subagent writes the verdict. - Any adb or device task: \"launch the app on the emulator\", \"what is on the screen\", \"tap Settings\", \"install the APK\", \"show the crash log\", \"grant the permission\", \"open the deep link\", \"take a screenshot\". Checks: \"check it on the emulator\", \"before/after screenshots\", \"how it looks on API 28/33/35\", \"run the flow in dark theme\", \"check the insets / bottom sheet change\"."
+argument-hint: "<what to do or check> [--api 28,33,35]"
 allowed-tools:
   - Bash
   - Read
@@ -14,29 +14,44 @@ allowed-tools:
 
 # ADBM — Android Debug Bridge Matrix
 
+ADBM is how you work with an Android device or emulator. Use it for every device task, not raw `adb`.
+It has two layers:
+
+- **Device control.** What you would do with `adb`: read the screen, tap, type, run apps, read logs,
+  deep links, permissions, files, screenshots. One command per action, no setup and no run folder.
+- **Checks.** Built on device control: emulators by API level, Maestro flows in parallel, "before" and
+  "after" builds, a diff, an HTML board and the `adbm-eyes` verdict. For "how does it look" and "what changed".
+
+Start with device control. Go to "Visual check" only when the task needs frames to compare,
+several API levels or a theme and navigation matrix.
+
 The CLI is `bin/adbm` of this skill: `ADBM="${CLAUDE_SKILL_DIR}/bin/adbm"`. If the variable is not
 substituted, take the folder from the "Base directory for this skill" line. Run commands from the
 project root: runs go to `<project>/build/adbm/<date>-<slug>/`. The project is the git root of the
 current folder; `ADBM_PROJECT=<path>` overrides it. Help: `"$ADBM" <command> -h`. Commands below
 omit the prefix: run `"$ADBM" <command>`, and set the variable in every Bash call (it does not persist).
 
-## Request → first command
+## Device control
 
 | The person asks | Run |
 |---|---|
 | what is on the screen | `ui --api 35` (`--find <text>` to narrow) |
 | tap, open a screen | `tap "<text>" --expect "<text on the next screen>"` |
-| type into a field | `type "<text>"`; non-Latin — see "Limitations" |
+| type into a field, clear it | `type "<text>"`, `clear-field`; non-Latin — see "Limitations" |
+| back, home, enter, keyboard, scroll, orientation | `key back` (`home`, `enter`, `hide-keyboard`, …), `swipe up`, `rotate landscape` |
+| wait for a screen, is a text there | `wait "<text>"`, `assert "<text>"`: exit code 0 or 1 |
 | install, launch, stop, clear data | `install <apk>`, `launch <pkg>`, `stop`, `clear`, `uninstall` |
 | logs, crash | `log` (the app's process), `log --crash`, `log --grep <re>` |
 | deep link, permission, file | `open <uri>`, `perm <pkg> grant CAMERA`, `push`, `pull` |
+| a screenshot | for you to see — `look` (~860 tokens); for the person — `shot <name>`, give the path, do not read it |
 | which devices, boot an emulator | `devices`, `devices --start` (the project's API levels) or `--start 33,35`, `devices --stop 33` |
-| device theme, navigation mode, font scale | `prep --theme dark`, `--nav gestural`, `--font-scale 1.3` |
+| device theme, navigation mode, font scale, locale | `prep --theme dark`, `--nav gestural`, `--font-scale 1.3`, `--locale ru-RU --app <pkg>` |
+| no `adbm` command for it | raw `adb -s <serial>` from `reference/adb.md` |
 | how it looks, before/after, several API levels, themes | "Visual check" below |
 
 A single action needs no `doctor`, `new`, `diff` or `board`. Only `new` and `run` start a run; outside one
 `adbm` writes to `~/.cache/adbm/`, and `shot`/`record` frames there are unseen by `diff` and `board`.
-Rare actions: `reference/adb.md`. `doctor` only if something does not start. Address devices by `--api N`.
+`doctor` only if something does not start. Address devices by `--api N`, a physical device by `--serial`.
 
 ## Token economy
 
@@ -52,7 +67,7 @@ A 1080×2400 image costs ~3350 tokens, a line of `adbm ui` ~15.
    ~1850). Screen coordinate = image coordinate / `scale` from the output. Over 3 `look` per task — stop.
 4. **Logs:** read only on failure and only the part you need (`tail`, `grep`).
 
-`adbm status` estimates what `adbm` put into the context. If the guard hook is installed (plugin, or
+`adbm status` estimates what `adbm` put into the context and what it saved, per run of the project; `status <run>` — one run. If the guard hook is installed (plugin, or
 `settings.json` per `docs/configuration.md`), it denies `Read` of a frame or a raw XML dump: do what the denial says.
 
 ## Visual check
