@@ -242,6 +242,40 @@ class SaveFlowTest(unittest.TestCase):
             self.assertIn(part, flow)
 
 
+class StatusTest(unittest.TestCase):
+    def test_calls_saved_and_project_total(self):
+        run = adbm.new_run("status")
+        a = type("A", (), {"cmd": "ui"})()
+        for cmd, chars in (("ui", 160), ("ui", 160), ("tap", 100), ("launch", 40)):
+            a.cmd = cmd
+            adbm.record_context(a, chars)
+        adbm.stats_add(run, context_images=1, context_image_tokens=860)
+        s = adbm.context_summary(adbm.load_stats(run))
+        self.assertTrue(s["calls_complete"])
+        self.assertEqual(s["by_command"]["ui"], {"calls": 2, "tokens": 80})
+        self.assertEqual(s["tokens"], 115 + 860)
+        self.assertEqual(s["saved"], 3 * adbm.SCREEN_TOKENS - 105 + adbm.SCREEN_TOKENS - 860)
+        # a command with no fresh run goes to the project cache: "outside runs"
+        os.remove(os.path.join(adbm.runs_dir(), ".current"))
+        adbm.USED_RUN[:] = []
+        a.cmd = "devices"
+        adbm.record_context(a, 40)
+        proj = adbm.project_summary()
+        names = [n for n, _, _ in proj["rows"]]
+        self.assertIn(os.path.basename(run), names)
+        self.assertIn("outside runs", names)
+        self.assertEqual(proj["total"]["calls"], sum(r["calls"] for _, _, r in proj["rows"]))
+        self.assertEqual(adbm.find_run("status"), run)
+        self.assertEqual(adbm.find_run(os.path.basename(run)), run)
+        self.assertIsNone(adbm.find_run("no-such-run"))
+
+    def test_old_stats_without_calls(self):
+        s = adbm.context_summary({"context_chars": 400, "commands": 3, "chars_by_command": {"ui": 400}})
+        self.assertFalse(s["calls_complete"])
+        self.assertIsNone(s["saved"])
+        self.assertIsNone(s["by_command"]["ui"]["calls"])
+
+
 class ToolsTest(unittest.TestCase):
     def test_guard_hook(self):
         hook = os.path.join(ROOT, "skill", "hooks", "adbm-guard.py")

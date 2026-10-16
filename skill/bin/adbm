@@ -32,7 +32,7 @@ import threading
 import time
 import xml.etree.ElementTree as ET
 
-VERSION = "0.2.0"
+VERSION = "0.2.1"
 HERE = os.path.dirname(os.path.realpath(__file__))
 SKILL_DIR = os.path.dirname(HERE)
 VIEWER = os.path.join(SKILL_DIR, "viewer", "index.html")
@@ -50,6 +50,9 @@ TUNE = {
 PHONE_IMAGES = ("google_apis", "google_apis_playstore", "default", "google_atd", "aosp_atd")
 LOOK_W = {"normal": 540, "small": 360}
 DIFF_W = 540
+# a full 1080×2400 screenshot in the context: what `ui`, `tap` and `look` replace (adbm status, saved)
+SCREEN_TOKENS = -(-1080 // 28) * -(-2400 // 28)
+SCREEN_COMMANDS = ("ui", "tap")
 _lock = threading.Lock()
 USED_RUN = []  # the run folder a command worked with: its output size goes to that run's stats.json
 
@@ -299,13 +302,15 @@ def record_context(a, chars):
     """Add a command's output size to stats.json of the run it worked with; never fails the command.
 
     A command started by `adbm record … -- <command>` writes to a log, not to the agent: not counted.
+    Without a fresh run the output goes to the project cache: `adbm status --project` shows it as "outside runs".
     """
     if os.environ.get("ADBM_NO_STATS"):
         return
     try:
-        run = USED_RUN[0] if USED_RUN else fresh_run()
+        run = USED_RUN[0] if USED_RUN else fresh_run() or project_cache()
         if run and os.path.isdir(run):
-            stats_add(run, context_chars=chars, commands=1, chars_by_command={a.cmd: chars})
+            stats_add(run, context_chars=chars, commands=1, chars_by_command={a.cmd: chars},
+                      calls_by_command={a.cmd: 1})
     except Exception:
         pass
 
@@ -3199,34 +3204,179 @@ def cmd_new(a):
     return 0
 
 
-def context_line(st):
-    """Estimate of what adbm put into the agent context: text ~4 characters per token, images by size."""
-    s = f"context: text ~{st.get('context_chars', 0) // 4} tokens ({st.get('commands', 0)} commands)"
-    s += f", images ~{st.get('context_image_tokens', 0)} tokens ({st.get('context_images', 0)})"
-    if st.get("thumb_images"):
-        s += f" · subagent thumbs ~{st.get('thumb_image_tokens', 0)} tokens ({st['thumb_images']})"
+def load_stats(folder):
+    try:
+        return json.load(open(os.path.join(folder, "stats.json")))
+    except Exception:
+        return {}
+
+
+def context_summary(st):
+    """Estimate of what adbm put into the agent context: text ~4 characters per token, images by size.
+
+    `saved` assumes every `ui` and `tap` would otherwise be a full screenshot and every `look` image
+    a full one too. Calls per command are counted since 0.2.1: in older stats `calls` is partial or None.
+    """
+    chars = st.get("chars_by_command") or {}
+    calls = st.get("calls_by_command") or {}
+    commands = st.get("commands", 0)
+    complete = bool(calls) and sum(calls.values()) == commands
+    by_command = {k: {"calls": calls.get(k) if complete else None, "tokens": v // 4}
+                  for k, v in sorted(chars.items(), key=lambda kv: -kv[1])}
+    text, images = st.get("context_chars", 0) // 4, st.get("context_image_tokens", 0)
+    screens = sum(calls.get(k, 0) for k in SCREEN_COMMANDS)
+    saved = None
+    if calls:
+        saved = (screens * SCREEN_TOKENS - sum(chars.get(k, 0) for k in SCREEN_COMMANDS) // 4
+                 + st.get("context_images", 0) * SCREEN_TOKENS - images)
+    return {
+        "tokens": text + images, "text_tokens": text, "calls": commands,
+        "images": st.get("context_images", 0), "image_tokens": images,
+        "thumbs": st.get("thumb_images", 0), "thumb_tokens": st.get("thumb_image_tokens", 0),
+        "screens": screens, "saved": saved, "calls_complete": complete, "by_command": by_command,
+    }
+
+
+def run_span(run):
+    """Start from the folder name, end from the last stats.json write: '2026-10-16 15:56 → 16:20'."""
+    try:
+        start = dt.datetime.strptime(os.path.basename(run.rstrip("/"))[:15], "%Y%m%d-%H%M%S")
+    except ValueError:
+        return None
+    p = os.path.join(run, "stats.json")
+    end = dt.datetime.fromtimestamp(os.path.getmtime(p)) if os.path.exists(p) else None
+    s = start.strftime("%Y-%m-%d %H:%M")
+    if end and end.strftime("%Y%m%d%H%M") != start.strftime("%Y%m%d%H%M"):
+        s += " → " + end.strftime("%H:%M" if end.date() == start.date() else "%Y-%m-%d %H:%M")
     return s
 
 
-def cmd_status(a):
-    run = current_run(create=False)
-    if not run:
-        print("no run — adbm new <slug>")
-        return 0
+def project_runs():
+    base = runs_dir()
+    if not os.path.isdir(base):
+        return []
+    return sorted(os.path.join(base, n) for n in os.listdir(base)
+                  if re.match(r"\d{8}-\d{6}-", n) and os.path.isdir(os.path.join(base, n)))
+
+
+def project_summary():
+    """Rows (name, folder, summary) for every run of the project and "outside runs", plus a total."""
+    rows = [(os.path.basename(r), r, context_summary(load_stats(r))) for r in project_runs()]
+    outside = load_stats(project_cache())
+    if outside:
+        rows.append(("outside runs", None, context_summary(outside)))
+    total = {k: sum(r[2][k] for r in rows) for k in ("tokens", "calls", "images", "image_tokens", "screens")}
+    saved = [r[2]["saved"] for r in rows if r[2]["saved"] is not None]
+    total["saved"] = sum(saved) if saved else None
+    total["calls_complete"] = all(r[2]["calls_complete"] for r in rows if r[2]["saved"] is not None)
+    return {"project": project_root(), "runs": len(project_runs()), "rows": rows, "total": total}
+
+
+def num(n):
+    return "—" if n is None else f"{n:,}"
+
+
+def saved_cell(saved, complete):
+    return num(saved) if saved is None or complete else "≥" + num(saved)
+
+
+def plural(n, word):
+    return f"{n} {word}" + ("" if n == 1 else "s")
+
+
+def find_run(name):
+    """A run of the project by full name, slug or part of the name; the latest of several matches."""
+    runs = project_runs()
+    for test in (lambda n: n == name, lambda n: n[16:] == name, lambda n: name in n):
+        hit = [r for r in runs if test(os.path.basename(r))]
+        if hit:
+            return hit[-1]
+    return None
+
+
+def print_project(proj, cur):
+    print(f"project  {proj['project']} · {plural(proj['runs'], 'run')}")
+    if not proj["rows"]:
+        print("nothing counted yet — adbm new <slug>")
+        return
+    names = [("* " if path and cur and os.path.samefile(path, cur) else "  ") + name
+             for name, path, _ in proj["rows"]]
+    w = max(len(n) for n in names + ["  total"])
+    print()
+    print(f"{'  run':<{w}}  {'when':<16}  {'calls':>6}  {'tokens':>8}  {'images':>6}  {'saved':>9}")
+    for n, (_, path, s) in zip(names, proj["rows"]):
+        when = (run_span(path) or "")[:16] if path else ""
+        print(f"{n:<{w}}  {when:<16}  {s['calls']:>6}  {num(s['tokens']):>8}  {s['images']:>6}  {saved_cell(s['saved'], s['calls_complete']):>9}")
+    t = proj["total"]
+    print(f"{'  total':<{w}}  {'':<16}  {t['calls']:>6}  {num(t['tokens']):>8}  {t['images']:>6}  {saved_cell(t['saved'], t['calls_complete']):>9}")
+    print()
+    print("tokens: what adbm put into the agent context · saved: each ui/tap and look image against a 1080×2400")
+    print(f"screenshot (~{SCREEN_TOKENS:,} tokens), rough estimate · * the current run · —, ≥ calls not counted before adbm 0.2.1")
+    print("one run in detail: adbm status <run> — the full name, the slug or a part of it")
+
+
+def print_run(run, a, proj):
     frames = scan_run(run)
-    try:
-        st = json.load(open(os.path.join(run, "stats.json")))
-    except Exception:
-        st = {}
-    print(f"run: {rel(run)} · as={default_as(run, a)}")
-    print(f"frames {sum(len(v) for k in frames for v in frames[k].values())}, pairs {sum(1 for k in frames for v in frames[k].values() if len(v) == 2)}")
-    counts = [f"{k} {st[k]}" for k in ("frames", "pairs", "pairs_changed", "frames_after_only") if k in st]
-    if counts:
-        print("stats: " + ", ".join(counts))
-    print(context_line(st))
-    top = sorted((st.get("chars_by_command") or {}).items(), key=lambda kv: -kv[1])[:5]
-    if top:
-        print("text by command: " + ", ".join(f"{k} ~{v // 4}" for k, v in top))
+    st = load_stats(run)
+    s = context_summary(st)
+    span = run_span(run)
+    print(f"run      {os.path.basename(run.rstrip('/'))} · build {default_as(run, a)}" + (f" · {span}" if span else ""))
+    n_frames = sum(len(v) for k in frames for v in frames[k].values())
+    n_pairs = sum(1 for k in frames for v in frames[k].values() if len(v) == 2)
+    line = f"frames   {n_frames} · pairs {n_pairs}"
+    if "pairs_changed" in st:
+        line += f" · changed {st['pairs_changed']}"
+    print(line)
+    print()
+    print(f"into agent context ≈ {num(s['tokens'])} tokens")
+    print(f"  text      ≈ {num(s['text_tokens']):>7}   {s['calls']} calls")
+    print(f"  images    ≈ {num(s['image_tokens']):>7}   {s['images']} (look, crop, annotate)")
+    if s["thumbs"]:
+        print(f"  subagent  ≈ {num(s['thumb_tokens']):>7}   {s['thumbs']} thumbs, not in the main context")
+    if s["by_command"]:
+        w = max(7, *(len(k) for k in s["by_command"]))
+        print()
+        print(f"{'command':<{w}}  {'calls':>5}  {'tokens':>7}  {'per call':>8}")
+        for k, c in s["by_command"].items():
+            per = c["tokens"] // c["calls"] if c["calls"] else None
+            print(f"{k:<{w}}  {num(c['calls']):>5}  {num(c['tokens']):>7}  {num(per):>8}")
+        if not s["calls_complete"]:
+            print("calls per command: not counted for the whole run (counted since adbm 0.2.1)")
+    print()
+    if s["saved"] is not None:
+        sign = "≈" if s["calls_complete"] else "≥"
+        print(f"saved    {sign} {num(s['saved'])} tokens · rough estimate")
+        print(f"         {s['screens']} ui/tap and {s['images']} look instead of 1080×2400 screenshots "
+              f"(~{SCREEN_TOKENS:,} tokens each)")
+    print("not counted: Read of files, build logs, the agent's own text — tools/measure-session.py")
+    print(f"project  {plural(proj['runs'], 'run')} · ≈ {num(proj['total']['tokens'])} tokens"
+          + (f", saved {saved_cell(proj['total']['saved'], proj['total']['calls_complete'])}" if proj["total"]["saved"] is not None else "")
+          + " · adbm status")
+
+
+def cmd_status(a):
+    """Without a run: every run of the project and a total. With a run: that run in detail."""
+    proj = project_summary()
+    cur = current_run(create=False, mark=False)
+    run = None
+    if a.run:
+        run = find_run(a.run)
+        if not run:
+            names = ", ".join(os.path.basename(r) for r in project_runs()[-5:]) or "none"
+            die(f"no run '{a.run}' in {runs_dir()} · latest: {names}")
+    if a.json:
+        out = {"project": proj["project"], "runs": proj["runs"], "total": proj["total"],
+               "by_run": {name: s for name, _, s in proj["rows"]},
+               "current": os.path.basename(cur) if cur else None}
+        if run:
+            out = {"run": os.path.basename(run), "path": run, "as": default_as(run, a), "span": run_span(run),
+                   **context_summary(load_stats(run))}
+        print(json.dumps(out, ensure_ascii=False, indent=1))
+        return 0
+    if run:
+        print_run(run, a, proj)
+    else:
+        print_project(proj, cur)
     return 0
 
 
@@ -3275,7 +3425,9 @@ def main():
     p = add("new", cmd_new, "start a new run build/adbm/<date>-<slug>")
     p.add_argument("slug")
     p.add_argument("--as", dest="as_", choices=VERSIONS)
-    add("status", cmd_status, "current run and counters")
+    p = add("status", cmd_status, "tokens adbm put into the agent context and saved: every run of the project, or one run")
+    p.add_argument("run", nargs="?", help="a run in detail: full name, slug or part of the name")
+    p.add_argument("--json", action="store_true")
     p = add("ui", cmd_ui, "compact UI tree as text", "one")
     p.add_argument("--find")
     p.add_argument("--all", action="store_true", help="include system UI")
