@@ -32,6 +32,20 @@ A 1080×2400 screenshot costs a model ~3350 tokens, so screenshots never enter t
 - **a subagent looks at the images** on a cheap model and returns up to 10 lines;
 - **when a picture is unavoidable** — `adbm look` returns a 540 px frame (~860 tokens) or a crop.
 
+`adbm status` shows what this cost. Without arguments it lists every run of the project: calls, tokens `adbm` put
+into the agent's context and tokens saved. `adbm status <run>` shows one run with calls and tokens per command.
+
+```
+  run                        when               calls    tokens  images      saved
+  20261015-101210-insets     2026-10-15 10:12      64     2,310       1     71,950
+* 20261016-155635-sheet      2026-10-16 15:56      96     3,760       1    248,423
+  total                                           160     6,070       2    320,373
+```
+
+`saved` is a rough estimate: every `ui` and `tap` counts as a 1080×2400 screenshot it replaced. `adbm` counts only
+its own output, not files the agent read or its own text. Counters live in each run's `stats.json`, so deleting old
+runs (`adbm clean`) removes them from the total. Details: [docs/commands.md](docs/commands.md#measuring-tokens).
+
 ## How it works
 
 1. **Builds.** `adbm install` installs the "before" build on all emulators at once, later the "after" build.
@@ -103,6 +117,7 @@ The CLI works without Claude Code too: `ln -s ~/dev/adbm/skill/bin/adbm /usr/loc
 | run a scenario over a matrix | `adbm run .adbm/flows/x.yaml --matrix theme=light,dark` |
 | compare and show | `adbm diff`, then `adbm board --open` |
 | app logs | `adbm log`, `adbm log --crash` |
+| tokens spent and saved | `adbm status`, `adbm status <run>` |
 | check the environment | `adbm doctor` |
 
 ## Documentation
