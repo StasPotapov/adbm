@@ -1247,12 +1247,14 @@ def cmd_devices(a):
     if not devs:
         print("no devices")
         return 1
-    print("API  serial                 name               screen")
+    # the serial is never cut: --serial needs it whole (Wi-Fi ones are like adb-XXX._adb-tls-connect._tcp)
+    sw = max(22, *(len(d["serial"]) for d in devs))
+    print(f"API  {'serial':<{sw}} name               screen")
     for d in devs:
         w, h = screen_size(d["serial"])
         dens = (ashell(d["serial"], "wm density").split() or ["?"])[-1] if d["api"] else "?"
         kind = "" if d["emulator"] else "  (physical)"
-        print(f"{d['api']:<4} {d['serial'][:22]:<22} {d['name'][:18]:<18} {w}x{h} {dens}dpi{kind}")
+        print(f"{d['api']:<4} {d['serial']:<{sw}} {d['name'][:18]:<18} {w}x{h} {dens}dpi{kind}")
     return 0
 
 
