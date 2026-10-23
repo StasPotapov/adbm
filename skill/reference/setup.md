@@ -7,9 +7,10 @@
 | Android SDK: `platform-tools`, `emulator`, `cmdline-tools` | adb, emulators, `sdkmanager` and `avdmanager` | Android Studio → SDK Manager → SDK Tools |
 | Java 17+ | Maestro, `sdkmanager`, Gradle | macOS: `brew install openjdk@17`; Linux: `sudo apt install openjdk-17-jdk` |
 | Python 3.9+ and Pillow | `adbm` itself: contact sheet, diff, `look` | `python3 -m pip install Pillow`; Homebrew Python: `brew install pillow`; Debian/Ubuntu: `sudo apt install python3-pil` |
-| Maestro | `adbm run`, `adbm type` with non-ASCII text | `adbm setup --maestro --yes` (Homebrew `mobile-dev-inc/tap/maestro`, without Homebrew the official `get.maestro.mobile.dev` script) |
+| Maestro | `adbm run`, `adbm type` with non-ASCII text when mobilecli is missing | `adbm setup --maestro --yes` (Homebrew `mobile-dev-inc/tap/maestro`, without Homebrew the official `get.maestro.mobile.dev` script) |
 | ffmpeg | contact sheet in `adbm record` | macOS: `brew install ffmpeg`; Linux: `sudo apt install ffmpeg` |
 | Android CLI, optional | `adbm annotate` and `tap '#N'` on screens without a UI tree; the rest works without it | `adbm setup --android-cli --yes` (Homebrew cask `android-cli`; without Homebrew install it by hand) |
+| mobilecli, optional | `adbm clipboard`; `adbm type` pastes non-ASCII text through the clipboard (~2–3 s instead of ~8 s) | `adbm setup --mobilecli --yes` (`npm install -g mobilecli@latest`; without npm — install Node.js first) |
 | SDK licenses | `sdkmanager` downloads images only after they are accepted | the person runs `sdkmanager --licenses` and accepts them; `adbm setup` stops and says so |
 | Guard hook (Claude Code) | denies `Read` of full-size frames | `adbm setup --hook --yes`: appends to `~/.claude/settings.json`; a plugin install has it |
 | `adbm-eyes` agent (Claude Code) | the subagent with 5 tools, a small start context | `adbm setup --agent --yes`: a link in `~/.claude/agents/`; a plugin install has it |
@@ -94,3 +95,15 @@ build "after", copy the APK and revert the file with `git checkout -- <file>`.
 Both APKs share one `applicationId`, so a device holds one version at a time.
 The order is: install "before", capture all "before", install "after", capture all "after".
 `adbm install` writes the package, `minSdk`, `targetSdk` and sha1 to the run's `builds.json`; the board shows them.
+
+## mobilecli
+
+A CLI by Mobile Next (the authors of mobile-mcp), license FSL-1.1-ALv2. `adbm` calls
+`mobilecli io clipboard get|set --device <id>`. An emulator's id in mobilecli is its AVD name when the
+emulator reports one (API 33, 35 here), else the serial: `adbm` finds it by itself.
+
+On Android it starts an agent on the device through `app_process` (`com.mobilenext.mobilecli.DeviceServer`)
+and keeps it for 30 minutes. The agent holds UiAutomation, so `uiautomator dump` fails while it runs:
+`adbm` stops the agent after every call. The next mobilecli call starts it again.
+On Android 13+ a clipboard change shows a "copied" overlay for ~10 s; `adbm` closes it.
+

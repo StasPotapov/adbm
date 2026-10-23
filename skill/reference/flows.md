@@ -40,7 +40,7 @@ Command reference: https://docs.maestro.dev/api-reference/commands
 - **One flow — one check.** Themes and navigation come from `--matrix`, not from copies of the file.
 - **Scroll to an element** — `scrollUntilVisible`, then `tapOn`.
 - **Non-Latin text in a field** — `inputText: "Привет"` works: checked with Maestro 2.11.0 on API 28, 33
-  and 35 (the Maestro docs still say Android takes ASCII only). By hand outside a flow — `adbm type`, it uses Maestro for such text.
+  and 35 (the Maestro docs still say Android takes ASCII only). By hand outside a flow — `adbm type`: it pastes such text through the clipboard with mobilecli, else uses Maestro.
 
 ## Template
 

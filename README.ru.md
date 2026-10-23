@@ -67,15 +67,16 @@ ADBM не заменяет эти инструменты, а связывает 
 
 | Инструмент | Лицензия | Что делает в ADBM |
 |---|---|---|
-| [Maestro](https://github.com/mobile-dev-inc/Maestro) — фреймворк UI-тестов от mobile.dev | Apache 2.0, открытый | выполняет сценарии: `adbm run` гоняет flow на всех API, `adbm save-flow` пишет flow из ручной сессии, `adbm type` вводит через него не-ASCII текст. Синтаксис flow — [документация Maestro](https://docs.maestro.dev) |
+| [Maestro](https://github.com/mobile-dev-inc/Maestro) — фреймворк UI-тестов от mobile.dev | Apache 2.0, открытый | выполняет сценарии: `adbm run` гоняет flow на всех API, `adbm save-flow` пишет flow из ручной сессии, `adbm type` вводит через него не-ASCII текст, если mobilecli не установлен. Синтаксис flow — [документация Maestro](https://docs.maestro.dev) |
 | [Android SDK](https://developer.android.com/tools): adb, emulator, sdkmanager, avdmanager | [Android SDK License Agreement](https://developer.android.com/studio/terms) от Google; открытые части SDK — под своими лицензиями | связь с устройством, эмуляторы, скачивание образов |
 | [Pillow](https://python-pillow.github.io) | MIT-CMU, открытый | пиксельный дифф, кропы, коллаж |
 | [FFmpeg](https://ffmpeg.org) | LGPL 2.1+, открытый; сборка с `--enable-gpl` — GPL 2+ | кадры из видео для `adbm record` |
 | [Android CLI](https://developer.android.com/tools/agents/android-cli), необязательный | закрытый бинарник Google, лицензия не опубликована; собирает данные об использовании, `adbm` выключает это флагом `--no-metrics` | нужен для экранов без дерева UI: игры, Canvas, WebView без доступности. `adbm annotate` рисует на кадре номера найденных элементов, `adbm tap '#7'` нажимает по номеру. Без Android CLI всё остальное работает, а на таком экране агент нажимает по координатам с кадра `adbm look`. Если агент встретит такой экран, он сам предложит поставить Android CLI и поставит только после твоего согласия: `adbm setup --android-cli --yes` |
+| [mobilecli](https://github.com/mobile-next/mobilecli) от Mobile Next, необязательный | [FSL-1.1-ALv2](https://github.com/mobile-next/mobilecli/blob/main/LICENSE): исходники открыты, но это не OSI-лицензия — она запрещает конкурирующий коммерческий продукт на его коде; каждый выпуск через два года переходит на Apache 2.0. `adbm` его не поставляет, а вызывает установленную тобой копию. Телеметрии в его коде не нашлось (проверено 23.10.2026, версия 1.0.21) | буфер обмена устройства: `adbm clipboard` читает и пишет его, `adbm type` вставляет через него не-ASCII текст за 2–3 с вместо ~8 с через Maestro. Без mobilecli всё остальное работает. Ставится только после твоего согласия: `adbm setup --mobilecli --yes` (npm) |
 
 ## Установка
 
-Нужны Android SDK, Python 3.9+ с Pillow, для сценариев и ввода не-ASCII через `adbm type` — [Maestro](https://github.com/mobile-dev-inc/Maestro), для видео — ffmpeg.
+Нужны Android SDK, Python 3.9+ с Pillow, для сценариев — [Maestro](https://github.com/mobile-dev-inc/Maestro), он же для ввода не-ASCII через `adbm type`, если нет mobilecli; для видео — ffmpeg.
 
 Платформы: macOS проверена. Linux должен работать: эмулятору нужен `/dev/kvm`. Windows не поддерживается, WSL не проверялся.
 

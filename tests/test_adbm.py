@@ -348,6 +348,88 @@ class CrashesTest(unittest.TestCase):
         self.assertFalse(adbm.REGISTERS.match("      #00 pc 0000000001b72b74  /data/app/lib.so"))
 
 
+class MobilecliTest(unittest.TestCase):
+    def setUp(self):
+        self.saved = {k: getattr(adbm, k) for k in ("sh", "adb", "ashell", "adb_ok", "mobilecli_bin", "screen_size")}
+        self.calls = []
+        adbm.mobilecli_bin = lambda: "/bin/mobilecli"
+        adbm.ashell = lambda s, cmd, timeout=60: self.calls.append(("shell", s, cmd)) or (
+            ("isVisible=true" if self.visible else "isVisible=false") if cmd.startswith("dumpsys") else self.xml)
+        adbm.MOBILECLI_IDS.clear()
+        self.visible = True
+        adbm.adb_ok = lambda s, cmd, timeout=60: self.calls.append(("ok", s, cmd)) or (True, "")
+        adbm.adb = lambda s, *args, timeout=60, binary=False: (0, "Pixel_8_API_35\nOK", "")
+        adbm.screen_size = lambda s: (1080, 2400)
+        self.xml = ""
+
+    def tearDown(self):
+        for k, v in self.saved.items():
+            setattr(adbm, k, v)
+
+    def fake_sh(self, ids, answer):
+        def sh(cmd, timeout=120, **kw):
+            self.calls.append(("sh", cmd))
+            if cmd[1] == "devices":
+                return 0, json.dumps({"status": "ok", "data": {"devices": [{"id": i} for i in ids]}}), ""
+            return 0, json.dumps(answer), ""
+        adbm.sh = sh
+
+    def test_avd_name_and_agent_stopped(self):
+        self.fake_sh(["emulator-5554", "Pixel_8_API_35"], {"status": "ok", "data": {"text": "Привет"}})
+        self.assertEqual(adbm.mobilecli("emulator-5556", "io", "clipboard", "get"), (True, {"text": "Привет"}))
+        self.assertIn(("sh", ["/bin/mobilecli", "io", "clipboard", "get", "--device", "Pixel_8_API_35"]), self.calls)
+        self.assertTrue(self.calls[-1][2].startswith("pkill -f 'com.mobilenext.mobilecli.DeviceServe[r]';"))
+        # a text that looks like a flag goes after --; the id is looked up once
+        self.calls.clear()
+        adbm.mobilecli("emulator-5556", "io", "clipboard", "set", text="-5 ₽")
+        self.assertEqual([c[1] for c in self.calls if c[0] == "sh"],
+                         [["/bin/mobilecli", "io", "clipboard", "set", "--device", "Pixel_8_API_35", "--", "-5 ₽"]])
+
+    def test_unknown_device_and_error(self):
+        self.fake_sh(["emulator-5554"], {"status": "error", "error": "boom"})
+        self.assertEqual(adbm.mobilecli("R5CT", "io", "clipboard", "get"), (False, "mobilecli does not see R5CT"))
+        self.assertFalse(any(c[0] == "shell" for c in self.calls))  # nothing ran on the device: nothing to stop
+        self.assertEqual(adbm.mobilecli("emulator-5554", "io", "clipboard", "get"), (False, "boom"))
+
+    def test_type_checks_the_field(self):
+        self.fake_sh(["e"], {"status": "ok", "data": {}})
+        field = '<hierarchy><node text="{}" resource-id="q" class="android.widget.EditText" focused="true" {} bounds="[0,0][100,50]" /></hierarchy>'
+        self.xml = field.format("Привет мир", 'password="false"')
+        self.assertEqual(adbm.type_clipboard("e", 28, "Привет мир"), (True, "", False))
+        self.xml = field.format("", 'password="false"')
+        ok, msg, fallback = adbm.type_clipboard("e", 28, "Привет мир")
+        self.assertEqual((ok, fallback), (False, False))
+        self.assertIn("may not accept paste", msg)
+        self.xml = field.format("••••", 'password="true"')
+        self.assertTrue(adbm.type_clipboard("e", 28, "пароль")[0])
+        self.xml = "<hierarchy></hierarchy>"
+        self.assertIn("no focused field", adbm.type_clipboard("e", 28, "x")[1])
+        # mobilecli failed before the paste: Maestro may type instead
+        adbm.MOBILECLI_IDS.clear()
+        self.fake_sh([], {})
+        self.assertEqual(adbm.type_clipboard("e", 28, "x"), (False, "mobilecli: mobilecli does not see e", True))
+
+    def test_overlay_dismiss(self):
+        btn = '<node resource-id="com.android.systemui:id/dismiss_button" class="x" bounds="[126,1333][252,1459]" />'
+        prev = '<node resource-id="com.android.systemui:id/clipboard_preview" class="x" bounds="[53,1259][263,1469]" />'
+        self.xml = prev + btn
+        adbm.clip_overlay_dismiss("e", 35)
+        self.assertEqual(self.calls[-1], ("ok", "e", "input tap 189 1396"))
+        self.xml = prev
+        adbm.clip_overlay_dismiss("e", 33)
+        self.assertEqual(self.calls[-1], ("ok", "e", "input swipe 158 1364 1060 1364 200"))
+        # the overlay went away while the dump ran: no gesture on the app below
+        self.calls.clear()
+        self.visible = False
+        adbm.clip_overlay_dismiss("e", 35)
+        self.assertNotIn("ok", [c[0] for c in self.calls])
+        self.calls.clear()
+        self.xml = ""
+        adbm.clip_overlay_dismiss("e", 33)
+        adbm.clip_overlay_dismiss("e", 28)
+        self.assertEqual([c[0] for c in self.calls], ["shell"])
+
+
 class SaveFlowTest(unittest.TestCase):
     def test_journal_to_flow(self):
         cache = os.environ["ADBM_CACHE"]

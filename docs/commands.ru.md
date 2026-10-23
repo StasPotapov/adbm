@@ -7,19 +7,20 @@
 
 | Команда | Что делает |
 |---|---|
-| `adbm doctor` | проверяет SDK, adb, emulator, Java, Maestro, Pillow, AVD и их `config.ini`, хук-ограждение, агента `adbm-eyes` и настройки |
+| `adbm doctor` | проверяет SDK, adb, emulator, Java, Maestro, Pillow, Android CLI и mobilecli (необязательные), AVD и их `config.ini`, хук-ограждение, агента `adbm-eyes` и настройки |
 | `adbm config` | настройки из `~/.config/adbm/config.ini` и `.adbm/config.ini`: модель и effort субагента, уровни API; `--set devices.apis=28,33,35 --project` записывает значение |
-| `adbm setup [--api 28,33,35]` | образы, AVD с 4 ГБ памяти, Maestro, Android CLI; `--hook`, `--agent` для Claude Code; без `--yes` — только план |
+| `adbm setup [--api 28,33,35]` | образы, AVD с 4 ГБ памяти, Maestro, Android CLI, mobilecli; `--hook`, `--agent` для Claude Code; без `--yes` — только план |
 | `adbm devices --start [28,33,35]` | поднимает эмуляторы (без значения — из `[devices] apis`), печатает API → serial → экран |
 | `adbm prep` | анимации 0, demo mode статус-бара, тема, навигация, шрифт |
 | `adbm new <slug>`, `adbm status [<прогон>] [--json]` | начать папку прогона; токены и экономия по всем прогонам проекта, `<прогон>` — один прогон с вызовами по командам |
 | `adbm install <apk> [--as before\|after]` | ставит APK на все API параллельно (по умолчанию `after`) |
 | `adbm launch`, `stop`, `clear`, `uninstall`, `open <uri>`, `perm`, `log` | управление приложением: запуск, остановка, данные, deep link, разрешения, хвост [logcat](https://developer.android.com/tools/logcat) |
+| `adbm clipboard ["<текст>"]` | буфер обмена устройства: без текста читает, с текстом записывает; нужен [mobilecli](https://github.com/mobile-next/mobilecli). На Android 13+ закрывает плашку «скопировано», чтобы она не попала в кадры |
 | `adbm crashes [--app <pkg>] [-n 20]`, `adbm crashes <id> [--lines 60] [--full]` | история падений, новые сверху: падения Java и native из буфера crash в logcat и из `dumpsys dropbox`, ANR — только из dropbox; dropbox хранит их и после перезагрузки. С id — текст одного падения: 60 строк без дампа регистров native, `--full` — целиком |
 | `adbm push`, `pull`, `rotate`, `devices --stop`, `clean` | файлы, ориентация, остановка эмуляторов, удаление старых прогонов (оставляет 5; без `--yes` только печатает план) |
 | `adbm flow new <slug>` | шаблон flow в `.adbm/flows/` |
 | `adbm ui`, `tap`, `wait`, `assert`, `type`, `clear-field`, `key`, `swipe` | навигация по тексту дерева UI; `tap` печатает, что изменилось на экране, `--expect` ждёт следующий экран |
-| `adbm batch '<шаг>' '<шаг>' … [--ui] [--keep-going]` | несколько действий за один вызов, например форма: каждый шаг — команда в кавычках, одна из `ui`, `tap`, `type`, `clear-field`, `key`, `swipe`, `wait`, `assert`, `launch`, `stop`, `clear`, `open`, `perm`, `rotate`; шаг без `--api`/`--serial` идёт на устройство батча; все шаги проверяются до первого действия; батч останавливается на первой ошибке, `--keep-going` выполняет остальные шаги; `--ui` печатает экран после последнего выполненного шага, и после остановки тоже |
+| `adbm batch '<шаг>' '<шаг>' … [--ui] [--keep-going]` | несколько действий за один вызов, например форма: каждый шаг — команда в кавычках, одна из `ui`, `tap`, `type`, `clear-field`, `key`, `swipe`, `wait`, `assert`, `launch`, `stop`, `clear`, `open`, `perm`, `rotate`, `clipboard`; шаг без `--api`/`--serial` идёт на устройство батча; все шаги проверяются до первого действия; батч останавливается на первой ошибке, `--keep-going` выполняет остальные шаги; `--ui` печатает экран после последнего выполненного шага, и после остановки тоже |
 | `adbm shot`, `look`, `thumb`, `annotate`, `record` | кадры в папку прогона, уменьшенный кадр или фрагмент, видео |
 | `adbm run <flow.yaml> --matrix …` | [Maestro flow](https://docs.maestro.dev) на всех API параллельно, матрица тем и навигации |
 | `adbm save-flow` | ручная сессия → Maestro flow |

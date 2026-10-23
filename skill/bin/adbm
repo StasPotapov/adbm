@@ -80,6 +80,10 @@ def android_cli():
     return p
 
 
+def mobilecli_bin():
+    return shutil.which("mobilecli")
+
+
 def maestro_bin():
     """Maestro on PATH, or in ~/.maestro/bin where its install script puts it."""
     p = os.path.expanduser("~/.maestro/bin/maestro")
@@ -987,6 +991,9 @@ def cmd_doctor(a):
     acli = android_cli()
     row(True if acli else None, "Android CLI (optional)", acli or "only for screens without a UI tree (annotate, tap #N); the rest works without it",
         "adbm setup --android-cli --yes")
+    mcli = mobilecli_bin()
+    row(True if mcli else None, "mobilecli (optional)", mcli or "only for the clipboard and fast non-ASCII typing; "
+        "the rest works without it", "adbm setup --mobilecli --yes")
     for ok, name, detail, fix in claude_rows():
         row(ok, name, detail, fix)
     cfg, problems = load_config()
@@ -1078,7 +1085,7 @@ def cmd_setup(a):
     avds = avd_index()
     running = {d["name"] for d in list_devices() if d["emulator"]} if sdk_tool("platform-tools", "adb") else set()
     apis = parse_apis(a.api)
-    if apis is None and not (a.tune or a.maestro or a.hook or a.agent or a.android_cli):
+    if apis is None and not (a.tune or a.maestro or a.hook or a.agent or a.android_cli or a.mobilecli):
         apis = config_apis()
         if not apis:
             die("pass --api 28,33,35, or ask the person and run adbm config --set devices.apis=28,33,35 --project")
@@ -1151,6 +1158,12 @@ def cmd_setup(a):
                           ["brew", "install", "--cask", "android-cli"]))
         else:
             print("Android CLI: no Homebrew — install it by hand: https://developer.android.com/tools/agents/android-cli")
+    if a.mobilecli and not mobilecli_bin():
+        if shutil.which("npm"):
+            steps.append(("mobilecli (FSL-1.1-ALv2 license; adbm stops its on-device agent after every call)",
+                          ["npm", "install", "-g", "mobilecli@latest"]))
+        else:
+            print("mobilecli: no npm — install Node.js, or see https://github.com/mobile-next/mobilecli#installation")
     if root and any(not callable(c) and c[0] == sdkm for _, c in steps) \
             and not os.path.exists(os.path.join(root, "licenses", "android-sdk-license")):
         msg = ("the Android SDK licenses are not accepted, so sdkmanager cannot download images. "
@@ -1689,7 +1702,7 @@ def cmd_assert(a):
 
 
 BATCH_COMMANDS = ("ui", "tap", "type", "clear-field", "key", "swipe", "wait", "assert",
-                  "launch", "stop", "clear", "open", "perm", "rotate")
+                  "launch", "stop", "clear", "open", "perm", "rotate", "clipboard")
 
 
 def batch_steps(steps, parser):
@@ -1789,15 +1802,24 @@ def cmd_launch(a):
 
 def cmd_type(a):
     api, s = pick(a)[0]
+    how = ""
     if re.fullmatch(r"[\x20-\x7e]*", a.text):
         ok, out = adb_ok(s, "input text " + shlex.quote(a.text.replace(" ", "%s")))
     else:
-        ok, out = type_maestro(s, a.text)
+        ok, fallback = False, True
+        if mobilecli_bin():
+            ok, out, fallback = type_clipboard(s, api, a.text)
+            how = " via the clipboard"
+            if not ok and fallback:
+                print(f"{api}: {trunc(out, 160)} — typing through Maestro")
+        if not ok and fallback:
+            ok, out = type_maestro(s, a.text)
+            how = " via Maestro"
     if not ok:
-        print(f"{api}: error — {trunc(out, 160)}")
+        print(f"{api}: error — {trunc(str(out), 160)}")
         return 1
     session_log({"api": api, "op": "type", "text": a.text})
-    print(f"{api}: typed {len(a.text)} characters" + ("" if re.fullmatch(r"[\x20-\x7e]*", a.text) else " via Maestro"))
+    print(f"{api}: typed {len(a.text)} characters{how}")
     return 0
 
 
@@ -2225,11 +2247,139 @@ def cmd_clear_field(a):
     return 0 if ok else 1
 
 
+MOBILECLI_AGENT = "com.mobilenext.mobilecli.DeviceServer"
+MOBILECLI_IDS = {}
+
+
+def mobilecli_id(mcli, serial):
+    """mobilecli names an emulator by its AVD name when the emulator reports one, else by the serial."""
+    if serial not in MOBILECLI_IDS:
+        _, out, _ = sh([mcli, "devices"], timeout=30)
+        ids = [d["id"] for d in json.loads(out)["data"]["devices"]]
+        dev = serial
+        if serial not in ids and serial.startswith("emulator-"):
+            dev = (adb(serial, "emu", "avd", "name", timeout=10)[1].splitlines() or [""])[0].strip()
+        MOBILECLI_IDS[serial] = dev if dev in ids else None
+    return MOBILECLI_IDS[serial]
+
+
+def mobilecli(serial, *args, text=None, timeout=60):
+    """mobilecli <args> --device <its id> [-- text] → (ok, data or error). Its on-device agent holds UiAutomation,
+    so `uiautomator dump` fails while it runs (`adbm ui`, `tap`): it is stopped after every call, mobile-mcp's too."""
+    mcli = mobilecli_bin()
+    if not mcli:
+        die("this needs mobilecli — offer the person `adbm setup --mobilecli --yes` and run it after a clear yes")
+    try:
+        dev = mobilecli_id(mcli, serial)
+    except (ValueError, KeyError, TypeError) as e:
+        return False, f"mobilecli devices: {e}"
+    if not dev:
+        return False, f"mobilecli does not see {serial}"
+    try:
+        code, out, err = sh([mcli, *args, "--device", dev] + (["--", text] if text is not None else []), timeout=timeout)
+    finally:
+        # SIGTERM ends it a moment later: wait, or the next dump still finds UiAutomation taken
+        # [r]: the pattern must not match this shell's own command line
+        pat = f"'{MOBILECLI_AGENT[:-1]}[{MOBILECLI_AGENT[-1]}]'"
+        ashell(serial, f"pkill -f {pat}; for i in 1 2 3 4 5 6 7 8 9 10; do "
+               f"pgrep -f {pat} >/dev/null || break; sleep 0.2; done", timeout=15)
+    try:
+        res = json.loads(out)
+    except ValueError:
+        return False, trunc((out + err).strip() or f"exit code {code}", 160)
+    return res.get("status") == "ok", res.get("data") if res.get("status") == "ok" else res.get("error", "?")
+
+
+def clip_overlay_visible(serial):
+    out = ashell(serial, "dumpsys window windows | grep -A40 'ClipboardOverlay}:' | grep -m1 isVisible=", timeout=15)
+    return "isVisible=true" in out
+
+
+def windows_xml(serial):
+    """UI dump of all windows: the app, the keyboard and system overlays such as the clipboard one."""
+    return ashell(serial, "uiautomator dump --windows /data/local/tmp/adbm-win.xml >/dev/null 2>&1;"
+                  " cat /data/local/tmp/adbm-win.xml; rm -f /data/local/tmp/adbm-win.xml", timeout=30)
+
+
+def clip_overlay_dismiss(serial, api, xml=None):
+    """Android 13+ shows a "copied" overlay for ~10 s after the clipboard changes: close it so frames stay clean.
+    It is in another window, so only `uiautomator dump --windows` sees it; API 34+ has a dismiss button,
+    API 33 only a preview that a swipe takes away."""
+    if api < 33:
+        return
+    xml = xml or windows_xml(serial)
+    box = {}
+    for rid in ("dismiss_button", "clipboard_preview"):
+        m = re.search(rf'resource-id="com\.android\.systemui:id/{rid}"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', xml)
+        if m:
+            box[rid] = tuple(map(int, m.groups()))
+    # the dump takes 1–2 s: the overlay may be gone by now, and the gesture would land on the app
+    if not box or not clip_overlay_visible(serial):
+        return
+    if "dismiss_button" in box:
+        x0, y0, x1, y1 = box["dismiss_button"]
+        adb_ok(serial, f"input tap {(x0 + x1) // 2} {(y0 + y1) // 2}")
+    else:
+        x0, y0, x1, y1 = box["clipboard_preview"]
+        w, _ = screen_size(serial)
+        adb_ok(serial, f"input swipe {(x0 + x1) // 2} {(y0 + y1) // 2} {w - 20} {(y0 + y1) // 2} 200")
+
+
+def clip_set(serial, api, text):
+    ok, res = mobilecli(serial, "io", "clipboard", "set", text=text)
+    if ok:
+        clip_overlay_dismiss(serial, api)
+    return ok, res
+
+
+def type_clipboard(serial, api, text):
+    """Non-ASCII text through the clipboard: ~1–3 s instead of ~8 s through Maestro. Replaces the clipboard.
+    → (ok, message, fallback): fallback — the clipboard path did not start, Maestro may type instead."""
+    ok, res = mobilecli(serial, "io", "clipboard", "set", text=text)
+    if not ok:
+        return False, f"mobilecli: {res}", True
+    adb_ok(serial, "input keyevent 279")  # KEYCODE_PASTE; its exit code is 0 even when nothing took the text
+    # one dump checks the field and finds the overlay: each dump costs 1–2 s
+    xml = windows_xml(serial)
+    try:
+        foc = next((n.attrib for n in ET.fromstring(xml.encode("utf-8")).iter("node")
+                    if n.get("focused") == "true"), None)
+    except ET.ParseError:
+        foc = None
+    clip_overlay_dismiss(serial, api, xml)
+    if not foc:
+        return False, "no focused field — tap the field first", False
+    # a password field shows dots instead of the text
+    if text not in foc.get("text", "") and foc.get("password") != "true":
+        return False, f"pasted, but the focused field shows {foc.get('text', '')!r} (it may not accept paste)", False
+    return True, "", False
+
+
+def cmd_clipboard(a):
+    targets = pick(a, multi=a.text is not None)
+
+    def one(api, s):
+        if a.text is None:
+            ok, res = mobilecli(s, "io", "clipboard", "get")
+            return ok, (res.get("text", "") if ok and isinstance(res, dict) else res)
+        return clip_set(s, api, a.text)
+    res = parallel(targets, one)
+    for (api, _), (ok, r) in zip(targets, res):
+        if not ok:
+            print(f"{api}: error — {trunc(str(r), 160)}")
+        elif a.text is None:
+            print(f"{api}: {json.dumps(r, ensure_ascii=False)}" if r else f"{api}: the clipboard is empty")
+        else:
+            print(f"{api}: clipboard set, {len(a.text)} characters")
+    return 0 if all(ok for ok, _ in res) else 1
+
+
 def type_maestro(serial, text):
     """Non-ASCII text: `input text` cannot type it, Maestro `inputText` can (checked on API 28, 33, 35)."""
     mae = maestro_bin()
     if not mae:
-        die("non-ASCII text is typed through Maestro, and it is not installed — adbm setup --maestro --yes")
+        die("non-ASCII text is typed through mobilecli (the clipboard) or Maestro, and neither works here —"
+            " adbm setup --mobilecli --yes (faster) or adbm setup --maestro --yes")
     focus = ashell(serial, "dumpsys window | grep -m1 mCurrentFocus", timeout=15)
     m = re.search(r"\s([\w.]+)/", focus)
     d = tempfile.mkdtemp(prefix="adbm-type-")
@@ -3651,6 +3801,7 @@ def build_parser():
     p.add_argument("--tune", action="store_true", help="fix config.ini of existing AVDs")
     p.add_argument("--maestro", action="store_true")
     p.add_argument("--android-cli", action="store_true")
+    p.add_argument("--mobilecli", action="store_true", help="mobilecli via npm: clipboard, fast non-ASCII typing")
     p.add_argument("--hook", action="store_true", help="add the guard hook to ~/.claude/settings.json")
     p.add_argument("--agent", action="store_true", help="link the adbm-eyes agent into ~/.claude/agents/")
     p.add_argument("--yes", action="store_true", help="run the plan")
@@ -3707,7 +3858,7 @@ def build_parser():
     p.add_argument("package")
     p.add_argument("--clear", action="store_true", help="pm clear before launch")
     p.add_argument("--stop", action="store_true", help="force-stop before launch")
-    p = add("type", cmd_type, "type text into the focused field; non-ASCII goes through Maestro", "one")
+    p = add("type", cmd_type, "type text into the focused field; non-ASCII goes through the clipboard (mobilecli) or Maestro", "one")
     p.add_argument("text")
     p = add("clear-field", cmd_clear_field, "delete the text of the focused field", "one")
     p = add("key", cmd_key, "key: back, home, enter, escape, tab, up/down/left/right, wake, sleep, power, "
@@ -3738,6 +3889,9 @@ def build_parser():
     p.add_argument("--tag")
     p.add_argument("--grep", metavar="REGEX")
     p.add_argument("--all", action="store_true", help="all processes")
+    p = add("clipboard", cmd_clipboard, "the device clipboard: without text — read it, with text — write it (needs mobilecli)",
+            "multi")
+    p.add_argument("text", nargs="?")
     p = add("crashes", cmd_crashes, "crash history: Java, native and ANR from the logcat crash buffer and dropbox "
             "(dropbox survives a reboot); with an id — the text of one crash", "one")
     p.add_argument("id", nargs="?", help="a crash id from the list")

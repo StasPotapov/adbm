@@ -7,19 +7,20 @@ Without `--api` they use the API levels from the project settings (see [configur
 
 | Command | What it does |
 |---|---|
-| `adbm doctor` | checks SDK, adb, emulator, Java, Maestro, Pillow, AVDs and their `config.ini`, the guard hook, the `adbm-eyes` agent and the settings |
+| `adbm doctor` | checks SDK, adb, emulator, Java, Maestro, Pillow, Android CLI and mobilecli (optional), AVDs and their `config.ini`, the guard hook, the `adbm-eyes` agent and the settings |
 | `adbm config` | settings from `~/.config/adbm/config.ini` and `.adbm/config.ini`: subagent model and effort, API levels; `--set devices.apis=28,33,35 --project` writes a value |
-| `adbm setup [--api 28,33,35]` | system images, AVDs with 4 GB RAM, Maestro, Android CLI; `--hook`, `--agent` for Claude Code; without `--yes` it only prints the plan |
+| `adbm setup [--api 28,33,35]` | system images, AVDs with 4 GB RAM, Maestro, Android CLI, mobilecli; `--hook`, `--agent` for Claude Code; without `--yes` it only prints the plan |
 | `adbm devices --start [28,33,35]` | boots emulators (without a value — from `[devices] apis`), prints API → serial → screen |
 | `adbm prep` | animations off, status bar demo mode, theme, navigation mode, font scale |
 | `adbm new <slug>`, `adbm status [<run>] [--json]` | start a run folder; tokens and saved tokens of every run of the project, `<run>` — one run with calls per command |
 | `adbm install <apk> [--as before\|after]` | installs an APK on all API levels in parallel (`after` by default) |
 | `adbm launch`, `stop`, `clear`, `uninstall`, `open <uri>`, `perm`, `log` | app control: launch, force-stop, data, deep link, permissions, [logcat](https://developer.android.com/tools/logcat) tail |
+| `adbm clipboard ["<text>"]` | the device clipboard: without text reads it, with text writes it; needs [mobilecli](https://github.com/mobile-next/mobilecli). On Android 13+ closes the "copied" overlay so it does not get into frames |
 | `adbm crashes [--app <pkg>] [-n 20]`, `adbm crashes <id> [--lines 60] [--full]` | crash history, newest first: Java and native crashes from the logcat crash buffer and `dumpsys dropbox`, ANR only from dropbox; dropbox keeps them after a reboot. With an id — the text of one crash: 60 lines without native register dumps, `--full` — all of it |
 | `adbm push`, `pull`, `rotate`, `devices --stop`, `clean` | files, orientation, stop emulators, delete old runs (keeps 5; without `--yes` only prints the plan) |
 | `adbm flow new <slug>` | a flow template in `.adbm/flows/` |
 | `adbm ui`, `tap`, `wait`, `assert`, `type`, `clear-field`, `key`, `swipe` | navigation by UI tree text; `tap` prints what changed on the screen, `--expect` waits for the next screen |
-| `adbm batch '<step>' '<step>' … [--ui] [--keep-going]` | several actions in one call, e.g. a form: each step is a command in quotes, one of `ui`, `tap`, `type`, `clear-field`, `key`, `swipe`, `wait`, `assert`, `launch`, `stop`, `clear`, `open`, `perm`, `rotate`; a step without `--api`/`--serial` runs on the batch device; every step is checked before the first one runs; the batch stops at the first failure, `--keep-going` runs the remaining steps; `--ui` prints the screen after the last step that ran, also after a stop |
+| `adbm batch '<step>' '<step>' … [--ui] [--keep-going]` | several actions in one call, e.g. a form: each step is a command in quotes, one of `ui`, `tap`, `type`, `clear-field`, `key`, `swipe`, `wait`, `assert`, `launch`, `stop`, `clear`, `open`, `perm`, `rotate`, `clipboard`; a step without `--api`/`--serial` runs on the batch device; every step is checked before the first one runs; the batch stops at the first failure, `--keep-going` runs the remaining steps; `--ui` prints the screen after the last step that ran, also after a stop |
 | `adbm shot`, `look`, `thumb`, `annotate`, `record` | frames into the run folder, a downscaled frame or crop, video |
 | `adbm run <flow.yaml> --matrix …` | a [Maestro flow](https://docs.maestro.dev) on all API levels in parallel, theme and navigation matrix |
 | `adbm save-flow` | manual session → Maestro flow |

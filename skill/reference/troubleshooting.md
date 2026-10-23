@@ -49,6 +49,6 @@ in a flow — as the first steps (`flows.md`, "Screenshot protection"); or use a
 | `adbm devices` lists a device as `offline` | `adb kill-server`, then `adbm devices`; an emulator — `devices --stop N`, `--start N` |
 | `unauthorized` | accept the USB debugging prompt on the device |
 | `no device with API N` | `adbm devices --start N`; no AVD — `adbm setup --api N --yes` |
-| `uiautomator dump failed` | an animation or a busy app: `adbm prep`, retry; `wait` and `tap --expect` retry by themselves |
+| `uiautomator dump failed` | an animation or a busy app: `adbm prep`, retry; `wait` and `tap --expect` retry by themselves. Fails every time — another tool holds UiAutomation: the mobilecli agent (mobile-mcp, mobilecli by hand) — `adb -s <serial> shell pkill -f com.mobilenext.mobilecli.DeviceServer`; a running Maestro flow — wait for it |
 | `[N] … is no longer on the screen` | the screen changed since `adbm ui`: run `ui` again, or tap by text |
 | a command hangs | `timeout 10 adb …` for raw adb; `adbm devices` to see the state |
