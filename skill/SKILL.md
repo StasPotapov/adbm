@@ -133,7 +133,7 @@ It writes the verdict to `<run>/notes.md` and returns up to 10 lines. Then `boar
 ## Limitations
 
 - **Non-Latin text:** `input text` cannot type it. With mobilecli `adbm type` pastes it through the clipboard
-  (~2–3 s; the clipboard is replaced) and checks that the focused field got it, without it — Maestro `inputText` (~8–10 s). If `type` of such text
+  (~2–3 s on an emulator, ~6 s on a phone over Wi-Fi; the clipboard is replaced) and checks that the focused field got it, without it — Maestro `inputText` (~8–10 s, ~17 s on a phone). If `type` of such text
   is slow and mobilecli is missing, offer `setup --mobilecli --yes` and run it after a clear yes.
   In a flow write `inputText` as usual.
 - **mobilecli** (`clipboard`, fast non-Latin `type`): Android 10+ lets only the foreground app read the clipboard;
@@ -144,6 +144,6 @@ It writes the verdict to `<run>/notes.md` and returns up to 10 lines. Then `boar
 - A physical device is picked only when no emulator has that API level: address it with `--serial`.
 - **`location`** on API 31+ is a test provider: apps see the location as mock (`Location.isMock()`), an app
   that rejects mock locations ignores it. A loop on the device keeps it until `location clear` or a reboot:
-  run `clear` when the check is over; it also restores the location setting and the appop as they were. Checked on emulators only; on a phone (API 31+) it is not checked, and
-  some vendor ROMs may forbid the mock_location appop for the shell. An emulator below API 31 gets a real
+  run `clear` when the check is over; it also restores the location setting and the appop as they were. Checked on
+  emulators API 33, 35 and a Pixel on API 37; some vendor ROMs may forbid the mock_location appop for the shell. An emulator below API 31 gets a real
   GPS fix from its console, and `clear` only moves it back to the boot location. A phone below API 31 is not supported.

@@ -2184,9 +2184,10 @@ def location_set(serial, lat, lon):
     """API 31+: → (ok, message). Saves the device state on the first set; on any failure removes the override."""
     adb_ok(serial, location_stop_script(), timeout=30)
     # the state of the device before adbm, written once: a second `location` must not save adbm's own state
-    adb_ok(serial, f"[ -f {LOCATION_STATE} ] || echo \"$(cmd location is-location-enabled) "
-           f"$(appops get com.android.shell android:mock_location | sed -n 's/.*: \\([a-z]*\\).*/\\1/p')\""
-           f" > {LOCATION_STATE}", timeout=15)
+    # "MOCK_LOCATION: allow; …", or "No operations." when the appop was never set: that is "default"
+    adb_ok(serial, f"[ -f {LOCATION_STATE} ] || {{ m=$(appops get com.android.shell android:mock_location"
+           f" | sed -n 's/^MOCK_LOCATION: \\([a-z]*\\).*/\\1/p'); "
+           f"echo \"$(cmd location is-location-enabled) ${{m:-default}}\" > {LOCATION_STATE}; }}", timeout=15)
     ok, out = adb_ok(serial, location_setup_script(lat, lon), timeout=60)
     if ok:
         ok, out = adb_ok(serial, location_loop_script(lat, lon), timeout=15)
@@ -2433,13 +2434,13 @@ def windows_xml(serial):
 
 def clip_overlay_dismiss(serial, api, xml=None):
     """Android 13+ shows a "copied" overlay for ~10 s after the clipboard changes: close it so frames stay clean.
-    It is in another window, so only `uiautomator dump --windows` sees it; API 34+ has a dismiss button,
-    API 33 only a preview that a swipe takes away."""
+    It is in another window, so only `uiautomator dump --windows` sees it. API 34–35 have a dismiss button,
+    API 33 a preview and API 37 a minimized preview that a swipe takes away."""
     if api < 33:
         return
     xml = xml or windows_xml(serial)
     box = {}
-    for rid in ("dismiss_button", "clipboard_preview"):
+    for rid in ("dismiss_button", "clipboard_preview", "minimized_preview"):
         m = re.search(rf'resource-id="com\.android\.systemui:id/{rid}"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', xml)
         if m:
             box[rid] = tuple(map(int, m.groups()))
@@ -2450,7 +2451,7 @@ def clip_overlay_dismiss(serial, api, xml=None):
         x0, y0, x1, y1 = box["dismiss_button"]
         adb_ok(serial, f"input tap {(x0 + x1) // 2} {(y0 + y1) // 2}")
     else:
-        x0, y0, x1, y1 = box["clipboard_preview"]
+        x0, y0, x1, y1 = box.get("clipboard_preview") or box["minimized_preview"]
         w, _ = screen_size(serial)
         adb_ok(serial, f"input swipe {(x0 + x1) // 2} {(y0 + y1) // 2} {w - 20} {(y0 + y1) // 2} 200")
 

@@ -418,6 +418,10 @@ class MobilecliTest(unittest.TestCase):
         self.xml = prev
         adbm.clip_overlay_dismiss("e", 33)
         self.assertEqual(self.calls[-1], ("ok", "e", "input swipe 158 1364 1060 1364 200"))
+        self.xml = '<node resource-id="com.android.systemui:id/minimized_preview" class="x" bounds="[12,1604][228,1748]" />'
+        adbm.clip_overlay_dismiss("e", 37)
+        self.assertEqual(self.calls[-1], ("ok", "e", "input swipe 120 1676 1060 1676 200"))
+        self.xml = prev
         # the overlay went away while the dump ran: no gesture on the app below
         self.calls.clear()
         self.visible = False

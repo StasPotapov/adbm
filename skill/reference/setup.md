@@ -105,5 +105,6 @@ emulator reports one (API 33, 35 here), else the serial: `adbm` finds it by itse
 On Android it starts an agent on the device through `app_process` (`com.mobilenext.mobilecli.DeviceServer`)
 and keeps it for 30 minutes. The agent holds UiAutomation, so `uiautomator dump` fails while it runs:
 `adbm` stops the agent after every call. The next mobilecli call starts it again.
-On Android 13+ a clipboard change shows a "copied" overlay for ~10 s; `adbm` closes it.
+On Android 13+ a clipboard change shows a "copied" overlay for ~10 s; `adbm` closes it: a dismiss button on API 34–35,
+a swipe on API 33 and on the minimized overlay of API 37.
 
