@@ -3927,7 +3927,7 @@ def build_parser():
     p.add_argument("--init", action="store_true", help="write a config file with the defaults")
     p.add_argument("--set", action="append", metavar="SECTION.KEY=VALUE", help="write a value, e.g. devices.apis=28,33,35")
     p.add_argument("--project", action="store_true", help="with --init or --set: the project's .adbm/config.ini")
-    p = add("setup", cmd_setup, "install system images, AVDs, Maestro, Android CLI (without --yes: plan only)")
+    p = add("setup", cmd_setup, "install system images, AVDs, Maestro, Android CLI, mobilecli (without --yes: plan only)")
     p.add_argument("--api")
     p.add_argument("--tune", action="store_true", help="fix config.ini of existing AVDs")
     p.add_argument("--maestro", action="store_true")
@@ -3983,14 +3983,25 @@ def build_parser():
             "stops at the first failure", "one")
     p.add_argument("steps", nargs="+", metavar="STEP", help=f"one of {', '.join(BATCH_COMMANDS)} with its arguments, "
                    "e.g. 'tap Email' 'type a@b.c'; a step without --api/--serial runs on the batch device")
-    p.add_argument("--ui", action="store_true", help="print adbm ui after the last step")
+    p.add_argument("--ui", action="store_true", help="print adbm ui after the last step that ran, also after a stop")
     p.add_argument("--keep-going", action="store_true", help="run the remaining steps after a failure")
+    p.formatter_class = argparse.RawDescriptionHelpFormatter
+    p.epilog = """examples:
+  adbm batch --api 35 'tap Email' 'type a@b.c' 'tap Password' 'type secret' 'tap "Sign in" --expect Home' --ui
+  adbm batch --api 35 'launch com.example --stop' 'wait Welcome --timeout 8' 'clipboard "promo code"'
+
+Each step is one quoted argument; a text with spaces inside a step takes its own quotes.
+Every step is parsed before the first one runs: a typo or an unknown command stops the batch with nothing done.
+Output: "[N] <step>" before each step's own output, then "batch: K of N ok[, stopped at [i] | failed [i], …]".
+Exit code: that of the first failed step, else 0. In adbm status each step counts as its own command."""
     p = add("launch", cmd_launch, "launch an app", "multi")
     p.add_argument("package")
     p.add_argument("--clear", action="store_true", help="pm clear before launch")
     p.add_argument("--stop", action="store_true", help="force-stop before launch")
     p = add("type", cmd_type, "type text into the focused field; non-ASCII goes through the clipboard (mobilecli) or Maestro", "one")
-    p.add_argument("text")
+    p.add_argument("text", help="the text; tap the field first. A text that starts with - goes after --")
+    p.epilog = ("ASCII: adb input text, ~1 s. Non-ASCII with mobilecli: pasted through the clipboard (~2–6 s), the "
+                "clipboard is replaced, and the focused field is checked afterwards; without mobilecli: Maestro, ~8–17 s.")
     p = add("clear-field", cmd_clear_field, "delete the text of the focused field", "one")
     p = add("key", cmd_key, "key: back, home, enter, escape, tab, up/down/left/right, wake, sleep, power, "
             "volume-up/down, notifications, hide-keyboard, or a keycode", "multi")
@@ -4022,17 +4033,48 @@ def build_parser():
     p.add_argument("--all", action="store_true", help="all processes")
     p = add("clipboard", cmd_clipboard, "the device clipboard: without text — read it, with text — write it (needs mobilecli)",
             "multi")
-    p.add_argument("text", nargs="?")
-    p = add("location", cmd_location, 'fake GPS: "lat,lon" sets it, clear removes it, nothing shows it. '
-            "API 31+: test providers; an older emulator: its console", "multi")
-    p.add_argument("to", nargs="?", metavar="LAT,LON|clear", help="55.7558,37.6173; a negative latitude after --, flags before it: --api 35 -- -33.86,151.21")
+    p.add_argument("text", nargs="?", help="text to write; without it the clipboard is read (one device only)")
+    p.formatter_class = argparse.RawDescriptionHelpFormatter
+    p.epilog = """examples:
+  adbm clipboard --api 35                   read: 35: "text" or "35: the clipboard is empty"
+  adbm clipboard "Привет" --api 33,35       write on several devices
+  adbm clipboard --api 35 -- "-5 ₽"         a text that starts with - goes after --
+
+Writing replaces the device clipboard. On Android 13+ the "copied" overlay is closed, so it does not
+get into frames. Needs mobilecli: if it is missing, offer `adbm setup --mobilecli --yes` to the person.
+adbm stops mobilecli's on-device agent after each call: while it runs, adbm ui and tap do not work."""
+    p = add("location", cmd_location, 'fake GPS: "lat,lon" sets it, "clear" removes it, without an argument it shows '
+            "the location. API 31+: test providers; an emulator below API 31: its console", "multi")
+    p.add_argument("to", nargs="?", metavar="LAT,LON|clear", help="55.7558,37.6173 or clear; a negative latitude after --, "
+                   "flags before it: --api 35 -- -33.86,151.21")
+    p.formatter_class = argparse.RawDescriptionHelpFormatter
+    p.epilog = """examples:
+  adbm location 55.7558,37.6173 --api 33,35     set
+  adbm location --api 35                        35: 55.755800,37.617300 (mock) · adbm override on
+  adbm location clear --api 33,35               remove
+
+API 31+ (emulator or phone): test providers gps and network; apps see the location as mock
+(Location.isMock()). A loop on the device sets it every second until "clear" or a reboot:
+run "clear" when the check is over, it also restores the location setting and the mock_location appop.
+The command checks dumpsys location after setting; on a mismatch it removes the override and says why.
+An emulator below API 31: the console's geo fix, a real GPS fix; "clear" cannot unset it and moves it
+to the emulator's default location. A phone below API 31 is not supported."""
     p = add("crashes", cmd_crashes, "crash history: Java, native and ANR from the logcat crash buffer and dropbox "
             "(dropbox survives a reboot); with an id — the text of one crash", "one")
-    p.add_argument("id", nargs="?", help="a crash id from the list")
-    p.add_argument("--app", help="only this package")
-    p.add_argument("-n", type=int, default=20, help="crashes in the list")
-    p.add_argument("--lines", type=int, default=60, help="lines of one crash")
-    p.add_argument("--full", action="store_true", help="the whole text of one crash")
+    p.add_argument("id", nargs="?", help="a crash id from the list: MMDD-HHMMSS-pid, e.g. 1023-132829-5355")
+    p.add_argument("--app", help="only this package (and crashes whose text dropbox lost)")
+    p.add_argument("-n", type=int, default=20, help="crashes in the list, newest first (default: 20)")
+    p.add_argument("--lines", type=int, default=60, help="lines of one crash, without native register dumps (default: 60)")
+    p.add_argument("--full", action="store_true", help="the whole text of one crash, registers included")
+    p.formatter_class = argparse.RawDescriptionHelpFormatter
+    p.epilog = """examples:
+  adbm crashes --api 35 --app com.example
+    1023-132829-5355  10-23 13:28:29  java    com.example  java.lang.IllegalStateException: …
+  adbm crashes --api 35 1023-132829-5355
+
+Kinds: java, native (logcat crash buffer and dropbox), anr (dropbox only). Dropbox keeps crashes after
+a reboot, and an id does not change then. "?" in the process column: the text was lost or names no process
+(a shell command such as uiautomator). For the last crash only, adbm log --crash is enough."""
     p = add("push", cmd_push, "copy a file to the device", "multi")
     p.add_argument("local")
     p.add_argument("remote")

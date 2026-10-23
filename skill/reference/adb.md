@@ -1,7 +1,8 @@
 # Raw adb — only what `adbm` does not do
 
 Do everyday work through `adbm`: apps (`launch`, `stop`, `clear`, `uninstall`, `open`, `perm`),
-input (`tap`, `type`, `key`, `swipe`, `rotate`), logs and crashes (`log`, `crashes`), files (`push`, `pull`), frames and the tree.
+input (`tap`, `type`, `key`, `swipe`, `rotate`, several at once — `batch`), logs and crashes (`log`, `crashes`),
+GPS (`location`), the clipboard (`clipboard`), files (`push`, `pull`), frames and the tree.
 Raw adb commands do not log to the `save-flow` journal and do not sort frames into a run.
 
 With more than one device connected, always write `adb -s <serial>`.

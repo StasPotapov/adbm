@@ -18,7 +18,8 @@ The agent checks the app, and you only look at the result.
 ## What it does
 
 - **Device control.** The agent launches and stops the app, navigates the screen,
-  types text (Cyrillic included), reads [logcat](https://developer.android.com/tools/logcat), grants permissions, copies files.
+  types text (Cyrillic included), runs several actions in one call, reads [logcat](https://developer.android.com/tools/logcat) and the crash history,
+  grants permissions, fakes the GPS location, reads and writes the clipboard, copies files.
 - **Several API levels at once.** The agent boots emulators for the Android versions you need,
   installs the APK and runs a [Maestro flow](https://docs.maestro.dev) on all API levels in parallel, with a theme and navigation matrix.
 - **Screenshots and video.** The agent saves frames to the run folder, takes a downscaled frame or a crop, records video.
