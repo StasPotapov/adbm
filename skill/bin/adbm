@@ -18,6 +18,7 @@ import fcntl
 import functools
 import glob
 import hashlib
+import io
 import json
 import os
 import platform
@@ -32,7 +33,7 @@ import threading
 import time
 import xml.etree.ElementTree as ET
 
-VERSION = "0.2.1"
+VERSION = "0.3.0"
 HERE = os.path.dirname(os.path.realpath(__file__))
 SKILL_DIR = os.path.dirname(HERE)
 VIEWER = os.path.join(SKILL_DIR, "viewer", "index.html")
@@ -432,6 +433,8 @@ def list_devices():
 
 def pick(args, multi=False):
     """Returns [(api, serial)] for --api / --serial."""
+    if getattr(args, "picked", None):
+        return [args.picked]
     if getattr(args, "serial", None):
         api = ashell(args.serial, "getprop ro.build.version.sdk", timeout=15)
         return [(int(api) if api.isdigit() else 0, args.serial)]
@@ -1683,6 +1686,83 @@ def cmd_wait(a):
 def cmd_assert(a):
     a.timeout, a.gone, a.is_assert = 0, False, True
     return cmd_wait(a)
+
+
+BATCH_COMMANDS = ("ui", "tap", "type", "clear-field", "key", "swipe", "wait", "assert",
+                  "launch", "stop", "clear", "open", "perm", "rotate")
+
+
+def batch_steps(steps, parser):
+    """Step strings → parsed namespaces. Every step is checked before the first one runs:
+    a typo stops the batch with nothing done."""
+    res = []
+    for i, text in enumerate(steps, 1):
+        try:
+            argv = shlex.split(text)
+        except ValueError as e:
+            die(f"step [{i}] {text!r}: {e}")
+        if not argv or argv[0] not in BATCH_COMMANDS:
+            die(f"step [{i}] {text!r}: a batch step is one of {', '.join(BATCH_COMMANDS)}")
+        out = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+                ns = parser.parse_args(argv)
+        except SystemExit as e:
+            why = "help is not a step" if e.code == 0 else (out.getvalue().strip().splitlines() or ["cannot parse"])[-1]
+            die(f"step [{i}] {text!r}: {why}")
+        res.append((text, ns))
+    return res
+
+
+def output_chars():
+    return getattr(sys.stdout, "n", 0) + getattr(sys.stderr, "n", 0)
+
+
+def cmd_batch(a):
+    """Steps run one by one on the batch device unless a step names its own. Each step goes to the
+    stats under its own command (a tap in a batch counts as a tap); main() records only the rest."""
+    P = build_parser()
+    steps = batch_steps(a.steps, P)
+    dev = pick(a)[0] if a.api or a.serial or not all(ns.api or ns.serial for _, ns in steps) else None
+    for _, ns in steps:
+        if not (ns.api or ns.serial):
+            ns.picked = dev
+    a.counted = 0
+    failed, code, last = [], 0, steps[0][1]
+    for i, (text, ns) in enumerate(steps, 1):
+        print(f"[{i}] {trunc(text, 60)}")
+        n0, last = output_chars(), ns
+        try:
+            rc = ns.fn(ns) or 0
+        except SystemExit as e:
+            rc = e.code if isinstance(e.code, int) else 1
+        except Exception as e:
+            print(f"  error — {type(e).__name__}: {trunc(str(e), 160)}")
+            rc = 1
+        n = output_chars() - n0
+        record_context(ns, n)
+        a.counted += n
+        if rc:
+            failed.append(i)
+            code = code or rc
+            if not a.keep_going:
+                break
+    if a.ui:
+        print("[ui]")
+        ns = P.parse_args(["ui"])
+        ns.api, ns.serial, ns.picked = last.api, last.serial, getattr(last, "picked", None)
+        n0 = output_chars()
+        try:
+            cmd_ui(ns)
+        except SystemExit:
+            pass
+        record_context(ns, output_chars() - n0)
+        a.counted += output_chars() - n0
+    done = len(steps) if a.keep_going or not failed else failed[0]
+    ok = done - len(failed)
+    print(f"batch: {ok} of {len(steps)} ok" + ("" if not failed else
+          f", failed {', '.join(f'[{i}]' for i in failed)}" if a.keep_going else f", stopped at [{failed[0]}]"))
+    return code
 
 
 def cmd_launch(a):
@@ -3384,7 +3464,7 @@ def cmd_status(a):
 
 # ---------------------------------------------------------------- argparse
 
-def main():
+def build_parser():
     P = argparse.ArgumentParser(prog="adbm", description="Android Debug Bridge Matrix — visual checks of Android apps by an agent")
     P.add_argument("--version", action="version", version=VERSION)
     sub = P.add_subparsers(dest="cmd", required=True)
@@ -3453,6 +3533,12 @@ def main():
     p.add_argument("--quiet", action="store_true", help="no screen diff after the tap")
     p.add_argument("--long", action="store_true", help="long press, 1 s")
     p.add_argument("--double", action="store_true", help="double tap")
+    p = add("batch", cmd_batch, "several actions in one call: each step is an adbm command in quotes; "
+            "stops at the first failure", "one")
+    p.add_argument("steps", nargs="+", metavar="STEP", help=f"one of {', '.join(BATCH_COMMANDS)} with its arguments, "
+                   "e.g. 'tap Email' 'type a@b.c'; a step without --api/--serial runs on the batch device")
+    p.add_argument("--ui", action="store_true", help="print adbm ui after the last step")
+    p.add_argument("--keep-going", action="store_true", help="run the remaining steps after a failure")
     p = add("launch", cmd_launch, "launch an app", "multi")
     p.add_argument("package")
     p.add_argument("--clear", action="store_true", help="pm clear before launch")
@@ -3550,7 +3636,11 @@ def main():
     p.add_argument("--open", action="store_true")
     p.add_argument("--summary-max", type=int, default=24)
     p.add_argument("--all", action="store_true", help="contact sheet with unchanged pairs too")
+    return P
 
+
+def main():
+    P = build_parser()
     argv = sys.argv[1:]
     tail = []
     if argv and argv[0] == "record" and "--" in argv:
@@ -3566,7 +3656,7 @@ def main():
         sys.exit(130)
     finally:
         sys.stdout, sys.stderr = out.stream, err.stream
-        record_context(a, out.n + err.n)
+        record_context(a, out.n + err.n - getattr(a, "counted", 0))
 
 
 if __name__ == "__main__":

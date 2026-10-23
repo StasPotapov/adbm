@@ -114,6 +114,7 @@ CLI работает и без Claude Code: `ln -s ~/dev/adbm/skill/bin/adbm /us
 |---|---|
 | что на экране | `adbm ui` |
 | нажать и дождаться следующего экрана | `adbm tap "Настройки" --expect "Тема"` |
+| несколько действий за один вызов | `adbm batch 'tap Email' 'type a@b.c' 'tap Далее' --ui` |
 | поднять эмуляторы проекта | `adbm devices --start` |
 | поставить сборку | `adbm install app.apk --as before` |
 | прогнать сценарий по матрице | `adbm run .adbm/flows/x.yaml --matrix theme=light,dark` |

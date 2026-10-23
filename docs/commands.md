@@ -18,6 +18,7 @@ Without `--api` they use the API levels from the project settings (see [configur
 | `adbm push`, `pull`, `rotate`, `devices --stop`, `clean` | files, orientation, stop emulators, delete old runs (keeps 5; without `--yes` only prints the plan) |
 | `adbm flow new <slug>` | a flow template in `.adbm/flows/` |
 | `adbm ui`, `tap`, `wait`, `assert`, `type`, `clear-field`, `key`, `swipe` | navigation by UI tree text; `tap` prints what changed on the screen, `--expect` waits for the next screen |
+| `adbm batch '<step>' '<step>' … [--ui] [--keep-going]` | several actions in one call, e.g. a form: each step is a command in quotes, one of `ui`, `tap`, `type`, `clear-field`, `key`, `swipe`, `wait`, `assert`, `launch`, `stop`, `clear`, `open`, `perm`, `rotate`; a step without `--api`/`--serial` runs on the batch device; every step is checked before the first one runs; the batch stops at the first failure, `--keep-going` runs the remaining steps; `--ui` prints the screen after the last step that ran, also after a stop |
 | `adbm shot`, `look`, `thumb`, `annotate`, `record` | frames into the run folder, a downscaled frame or crop, video |
 | `adbm run <flow.yaml> --matrix …` | a [Maestro flow](https://docs.maestro.dev) on all API levels in parallel, theme and navigation matrix |
 | `adbm save-flow` | manual session → Maestro flow |
@@ -46,7 +47,7 @@ Outside a run `shot` and `record` write frames to the project cache `~/.cache/ad
 (text as characters / 4, images by size) and saved tokens. `adbm status <run>` shows one run in detail, with calls
 and tokens per command; `<run>` is the full folder name, the slug or a part of the name.
 `saved` is a rough estimate: it assumes every `ui` and `tap` would otherwise be a 1080×2400 screenshot
-(~3350 tokens) and every `look` image a full one. Calls per command are counted since 0.2.1: for older runs
+(~3350 tokens) and every `look` image a full one. Steps of `adbm batch` count as their own commands: a `tap` in a batch is a `tap`. Calls per command are counted since 0.2.1: for older runs
 the column shows `—`.
 
 Counters live in the run folder. A command outside a run, or more than 12 hours after the run's last command,

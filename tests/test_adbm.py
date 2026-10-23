@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import types
 import unittest
 import warnings
 
@@ -210,6 +211,85 @@ class DiffTest(unittest.TestCase):
         self.assertTrue(adbm.same_change(r1, r2))
         self.assertFalse(adbm.same_change(r1, dict(r2, pct=4.0)))
         self.assertFalse(adbm.same_change(r1, dict(r2, status_bar=True)))
+
+
+class BatchTest(unittest.TestCase):
+    def steps(self, *steps):
+        err = io.StringIO()
+        with contextlib.redirect_stdout(err), contextlib.redirect_stderr(err):
+            try:
+                return adbm.batch_steps(steps, adbm.build_parser())
+            except SystemExit:
+                return err.getvalue()
+
+    def test_parse(self):
+        res = self.steps("tap 'Sign in' --expect Done", "type a@b.c", "key back --ap 33")
+        self.assertEqual([ns.fn for _, ns in res], [adbm.cmd_tap, adbm.cmd_type, adbm.cmd_key])
+        self.assertEqual(res[0][1].selector, "Sign in")
+        self.assertEqual((res[0][1].api, res[0][1].serial), (None, None))
+        # an abbreviated flag still names the step's own device
+        self.assertEqual(res[2][1].api, "33")
+
+    def test_rejected_before_any_step(self):
+        self.assertIn("step [2]", self.steps("tap OK", "batch 'tap OK'"))
+        self.assertIn("step [1]", self.steps("shot x"))
+        self.assertIn("step [2]", self.steps("tap OK", "tap --no-such-flag OK"))
+        self.assertIn("step [1]", self.steps("type 'unclosed"))
+        out = self.steps("tap -h")
+        self.assertIn("help is not a step", out)
+        self.assertNotIn("usage:", out)
+
+    def run_batch(self, steps, keep_going=False, **dev):
+        out = io.StringIO()
+        a = types.SimpleNamespace(steps=steps, ui=False, keep_going=keep_going, api=None, serial=None, **dev)
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+            rc = adbm.cmd_batch(a)
+        return rc, out.getvalue().splitlines()[-1]
+
+    def test_stop_keep_going_and_devices(self):
+        calls = []
+
+        def ok(a):
+            calls.append((a.text, adbm.pick(a)[0][1]))
+            return 0
+
+        def bad(a):
+            calls.append((a.text, adbm.pick(a)[0][1]))
+            adbm.die("not found")
+
+        def boom(a):
+            raise ValueError("broken XML")
+        table = {"a": ok, "b": bad, "c": ok, "d": boom}
+        picks = []
+
+        def fake_pick(args, multi=False):
+            if getattr(args, "picked", None):
+                return [args.picked]
+            picks.append(args.serial)
+            return [(35, args.serial or "emulator-5556")]
+
+        def fake_steps(steps, parser):
+            return [(t.split()[0], types.SimpleNamespace(fn=table[t.split()[0]], text=t.split()[0], cmd="tap",
+                                                          api=None, serial=t.split()[1] if " " in t else None))
+                    for t in steps]
+        saved = adbm.pick, adbm.batch_steps
+        adbm.pick, adbm.batch_steps = fake_pick, fake_steps
+        try:
+            self.assertEqual(self.run_batch(["a", "b", "c"]), (1, "batch: 1 of 3 ok, stopped at [2]"))
+            self.assertEqual(calls, [("a", "emulator-5556"), ("b", "emulator-5556")])
+            self.assertEqual(picks, [None])  # one device lookup for the whole batch
+            calls.clear()
+            self.assertEqual(self.run_batch(["a", "d", "b", "c"], keep_going=True),
+                             (1, "batch: 2 of 4 ok, failed [2], [3]"))
+            self.assertEqual([t for t, _ in calls], ["a", "b", "c"])
+            # every step names its device: no batch device needed
+            calls.clear()
+            picks.clear()
+            self.assertEqual(self.run_batch(["a emulator-5558"]), (0, "batch: 1 of 1 ok"))
+            self.assertEqual(calls, [("a", "emulator-5558")])
+            self.assertEqual(picks, ["emulator-5558"])
+        finally:
+            adbm.pick, adbm.batch_steps = saved
 
 
 class SaveFlowTest(unittest.TestCase):

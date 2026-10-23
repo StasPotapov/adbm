@@ -40,6 +40,7 @@ omit the prefix: run `"$ADBM" <command>`, and set the variable in every Bash cal
 | type into a field, clear it | `type "<text>"`, `clear-field`; non-Latin — see "Limitations" |
 | back, home, enter, keyboard, scroll, orientation | `key back` (`home`, `enter`, `hide-keyboard`, …), `swipe up`, `rotate landscape` |
 | wait for a screen, is a text there | `wait "<text>"`, `assert "<text>"`: exit code 0 or 1 |
+| several actions in a row: a form, a known path | `batch 'tap Email' 'type a@b.c' 'tap Next --expect Done' --ui`: one call, stops at the first failure (`--keep-going` — run the rest); steps: `ui tap type clear-field key swipe wait assert launch stop clear open perm rotate` |
 | install, launch, stop, clear data | `install <apk>`, `launch <pkg>`, `stop`, `clear`, `uninstall` |
 | logs, crash | `log` (the app's process), `log --crash`, `log --grep <re>` |
 | deep link, permission, file | `open <uri>`, `perm <pkg> grant CAMERA`, `push`, `pull` |
@@ -60,6 +61,7 @@ A 1080×2400 image costs ~3350 tokens, a line of `adbm ui` ~15.
 1. **Navigate by text.** `ui`, then `tap "<text>"`. `tap` prints what appeared, went away and switches that flipped;
    `--expect` confirms the next screen in one line. Do not call `ui` after every tap.
    A tap by `x,y` or `#N` prints no change — add `--expect`. `[N]` from `ui` works only on that screen.
+   Steps you already know (fill a form, go down a known path) — one `batch` instead of a call per action.
    Text that looks like `x,y`, `#N` or `[N]` (a price "1,500"): `tap "text:1,500"`.
 2. **Do not open frames.** `shot` and `run` save frames to the run, not to the context. Never `Read` a file
    from `api*/`. `adbm diff` decides what changed; the `adbm-eyes` subagent looks at images.
