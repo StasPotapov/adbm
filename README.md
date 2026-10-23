@@ -3,14 +3,24 @@
 [Русский](README.ru.md)
 
 A [Claude Code](https://code.claude.com/docs/en/overview) [skill](https://code.claude.com/docs/en/skills) and the `adbm` CLI: an agent works with an Android device and [emulators](https://developer.android.com/studio/run/emulator)
-over [adb](https://developer.android.com/tools/adb) and spends few tokens on it. The agent calls `adbm` commands instead of raw `adb`.
+over [adb](https://developer.android.com/tools/adb) with deterministic commands. The agent calls `adbm` commands instead of raw `adb`
+and does not guess from a screenshot where to tap.
 
 ## Why
 
 The agent checks the app, and you only look at the result.
 
-- **Easier for the agent.** One `adbm` command replaces a chain of `adb` calls. The agent saves tokens at every step:
-  navigation, screenshots and checks. So it works faster and costs less.
+- **Deterministic.** Python scripts work with the device, not a model looking at a screenshot.
+  `adbm tap "Settings" --expect "Theme"` finds the element in the UI tree, waits for it while the screen loads,
+  taps it and checks that the right screen opened.
+  `adbm wait` and `adbm assert` answer with an exit code, `adbm diff` computes changes pixel by pixel.
+  The same command on the same screen gives the same result, so a check can be repeated.
+- **More reliable and faster.** The agent does not take a screenshot before every step to decide where to tap
+  and what happened. It calls a command and reads a short answer: what appeared, what went away, whether it worked.
+  So there are fewer steps and fewer mistakes.
+- **A model where a script cannot help.** A script cannot tell whether a change is expected or the layout broke.
+  A subagent decides that: it looks only at the frames that changed and writes the verdict.
+- **Fewer tokens.** This follows from the deterministic commands: the agent reads lines of text, not images.
 - **Fully automated.** The agent boots the emulators, installs the builds, runs the scenario and compares the frames.
 - **Easier for you to check.** You open one board and see only what changed, with a verdict
   for each frame. In a minute you know whether everything is fine.
@@ -27,7 +37,8 @@ The agent checks the app, and you only look at the result.
 - **Change checks.** When a change needs checking — a fix, a bug — the agent installs "before" and "after" builds and computes a pixel diff.
   Then `adbm` builds an HTML board and a "before | after" PNG contact sheet, and a [subagent](https://code.claude.com/docs/en/sub-agents) writes the verdict.
 
-A 1080×2400 screenshot costs a model ~3350 tokens, so screenshots never enter the agent's context:
+Whatever can be computed, `adbm` computes. A model looks at a picture only when nothing else helps.
+So screenshots never enter the agent's context, and a 1080×2400 screenshot costs a model ~3350 tokens:
 
 - **the agent navigates by text** — `adbm ui` shrinks the UI tree 10–20×, `adbm tap "Close"`;
 - **"did it change" is computed in Python** — `adbm diff` reports percent and area, and element shifts for frames from `adbm shot`;
@@ -65,7 +76,7 @@ status bar. A step-by-step walkthrough with diff lines and crops is in [docs/exa
 
 ## Built on
 
-ADBM does not replace these tools: it ties them together and saves the agent's tokens.
+ADBM does not replace these tools: it builds deterministic commands for the agent out of them.
 
 | Tool | License | What it does in ADBM |
 |---|---|---|

@@ -1,6 +1,6 @@
 ---
 name: adbm
-description: "Drives an Android device or emulator for the agent instead of raw adb, at a fraction of the tokens: reads the screen as compact text, taps by text, types (Cyrillic too), swipes, presses keys, runs several actions in one call, installs, launches and stops apps, reads logcat and the crash history (ANR, native, before a reboot), opens deep links, grants permissions, fakes the GPS location, reads and writes the clipboard, copies files, takes screenshots. On top of that it checks how the app looks: boots emulators for the needed API levels, runs Maestro flows on them in parallel with a theme and navigation matrix, shows the screens on an HTML board, compares \"before\" and \"after\" builds when a change needs checking, and a subagent writes the verdict. - Any adb or device task: \"launch the app on the emulator\", \"what is on the screen\", \"tap Settings\", \"install the APK\", \"show the crash log\", \"why did it crash yesterday\", \"grant the permission\", \"open the deep link\", \"set the location to Moscow\", \"what is in the clipboard\", \"fill in the form\", \"take a screenshot\". Checks: \"check it on the emulator\", \"show me the screens\", \"before/after screenshots\", \"how it looks on API 28/33/35\", \"run the flow in dark theme\", \"check the insets / bottom sheet change\"."
+description: "Drives an Android device or emulator for the agent instead of raw adb, with deterministic commands instead of guessing from screenshots: reads the screen as compact text, taps by text and checks the next screen, types (Cyrillic too), swipes, presses keys, runs several actions in one call, installs, launches and stops apps, reads logcat and the crash history (ANR, native, before a reboot), opens deep links, grants permissions, fakes the GPS location, reads and writes the clipboard, copies files, takes screenshots. On top of that it checks how the app looks: boots emulators for the needed API levels, runs Maestro flows on them in parallel with a theme and navigation matrix, shows the screens on an HTML board, compares \"before\" and \"after\" builds when a change needs checking, and a subagent writes the verdict. - Any adb or device task: \"launch the app on the emulator\", \"what is on the screen\", \"tap Settings\", \"install the APK\", \"show the crash log\", \"why did it crash yesterday\", \"grant the permission\", \"open the deep link\", \"set the location to Moscow\", \"what is in the clipboard\", \"fill in the form\", \"take a screenshot\". Checks: \"check it on the emulator\", \"show me the screens\", \"before/after screenshots\", \"how it looks on API 28/33/35\", \"run the flow in dark theme\", \"check the insets / bottom sheet change\"."
 argument-hint: "<what to do or check> [--api 28,33,35]"
 allowed-tools:
   - Bash
@@ -15,6 +15,10 @@ allowed-tools:
 # ADBM — Android Debug Bridge Matrix
 
 ADBM is how you work with an Android device or emulator. Use it for every device task, not raw `adb`.
+Its commands are deterministic: `tap` finds the element in the UI tree and reports what changed,
+`--expect`, `wait` and `assert` confirm a screen with one line and an exit code, `diff` computes changes
+in Python. Trust their output; do not look at the screen to decide where to tap or whether it worked.
+A model looks at pictures only for what a script cannot judge: is a change expected, is the layout broken.
 It has two layers:
 
 - **Device control.** What you would do with `adb`: read the screen, tap, type, run apps, read logs,
@@ -58,9 +62,9 @@ A single action needs no `doctor`, `new`, `diff` or `board`. Only `new` and `run
 `adbm` writes to `~/.cache/adbm/`, and `shot`/`record` frames there are unseen by `diff` and `board`.
 `doctor` only if something does not start. Address devices by `--api N`, a physical device by `--serial`.
 
-## Token economy
+## Commands, not pictures
 
-A 1080×2400 image costs ~3350 tokens, a line of `adbm ui` ~15.
+A command answers in a few lines; a 1080×2400 image costs ~3350 tokens, a line of `adbm ui` ~15.
 
 1. **Navigate by text.** `ui`, then `tap "<text>"`. `tap` prints what appeared, went away and switches that flipped;
    `--expect` confirms the next screen in one line. Do not call `ui` after every tap.

@@ -53,12 +53,16 @@ of a change and gives you a ready result. You fix a bug or add a component. The 
 on the "before" and "after" builds and compares the frames. Then you open one page and see whether the change works
 the way you meant.
 
-- **The agent spends few tokens.** Full-size frames never enter the agent's context: a hook blocks reading them.
-  The agent navigates by the text of the UI tree. Python computes what changed, pixel by pixel, without a model.
-  A subagent on a cheap model looks at the frames and returns text to the agent. The run's `stats.json` shows the cost.
+- **Deterministic commands.** Python works with the device, not a model looking at a screenshot. `tap` finds
+  the element in the UI tree, taps it and checks the next screen. `wait` and `assert` answer with an exit code.
+  `diff` computes what changed, pixel by pixel. `prep` turns off animations and turns on demo mode, so frames
+  differ only because of your change. The same command gives the same result, so a check can be repeated.
+- **A model only where a script cannot help.** A subagent decides whether a change is expected or the layout broke.
+  It looks only at the changed frames and returns text to the agent.
+- **Few tokens as a result.** The agent reads lines of text, not images. Full-size frames never enter
+  its context: a hook blocks reading them. `adbm status` shows the cost.
 - **The agent does everything itself.** It boots the emulators, installs both builds and runs one Maestro flow
   on all API levels in parallel. The scenario runs in every cell of the API × theme × navigation × font scale matrix.
-  `prep` turns off animations and turns on demo mode, so frames differ only because of your change.
 - **No reference images.** ADBM compares two builds on one scenario. You do not prepare reference images,
   test code or `@Preview`.
 - **The result is on one page.** The board shows the changed frames and a verdict for each: EXPECTED, PROBLEM or REVIEW.
