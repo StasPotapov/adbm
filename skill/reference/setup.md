@@ -80,11 +80,11 @@ First check the app's `minSdk` (`grep -rn minSdk` over `build.gradle*` and `libs
 Build "before" from the base commit in a separate worktree so the working copy stays untouched:
 
 ```bash
-BASE=$(git merge-base HEAD origin/main)       # or the commit before the change
+BASE=$(git merge-base HEAD origin/main)       # or the commit before the change; an uncommitted change: BASE=HEAD
 git worktree add ../<repo>-before $BASE
 (cd ../<repo>-before && ./gradlew :app:assembleDebug)
-adbm install ../<repo>-before/app/build/outputs/apk/debug/app-debug.apk --as before --api 28,33,35
-adbm install app/build/outputs/apk/debug/app-debug.apk --as after --api 28,33,35
+"$ADBM" install ../<repo>-before/app/build/outputs/apk/debug/app-debug.apk --as before --api 28,33,35
+"$ADBM" install app/build/outputs/apk/debug/app-debug.apk --as after --api 28,33,35
 git worktree remove ../<repo>-before          # after the check
 ```
 

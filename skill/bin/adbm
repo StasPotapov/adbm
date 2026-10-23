@@ -3957,7 +3957,7 @@ def build_parser():
     p.add_argument("run", nargs="?", help="a run in detail: full name, slug or part of the name")
     p.add_argument("--json", action="store_true")
     p = add("ui", cmd_ui, "compact UI tree as text", "one")
-    p.add_argument("--find")
+    p.add_argument("--find", help="only nodes that match: exact text, content-desc or id, else a case-insensitive substring")
     p.add_argument("--all", action="store_true", help="include system UI")
     p.add_argument("--limit", type=int, default=40)
     p.add_argument("--xy", action="store_true", help="classes and @x,y coordinates of every node")
@@ -3969,9 +3969,9 @@ def build_parser():
     p.add_argument("text")
     p = add("tap", cmd_tap, 'tap by text, content-desc, id; "x,y"; "[N]" from ui; "#N" from annotate', "one")
     p.add_argument("selector", help="text, x,y, [N] from adbm ui, #N from adbm annotate; text:<…> forces a text match")
-    p.add_argument("--nth", type=int, default=0)
-    p.add_argument("--index", type=int)
-    p.add_argument("--retries", type=int, default=6)
+    p.add_argument("--nth", type=int, default=0, help="which of several matches to tap, from 0 (default: 0)")
+    p.add_argument("--index", type=int, help="the node [N] from the last adbm ui, same as the selector \"[N]\"")
+    p.add_argument("--retries", type=int, default=6, help="tries to find the node, 1 s apart (default: 6)")
     p.add_argument("--scroll", type=int, default=0, help="how many times to scroll down if not found")
     p.add_argument("--wait", type=float, default=0.8, help="pause after the tap, s")
     p.add_argument("--expect", metavar="TEXT", help="after the tap wait for this text: one line ok / not found")
@@ -4001,7 +4001,9 @@ Exit code: that of the first failed step, else 0. In adbm status each step count
     p = add("type", cmd_type, "type text into the focused field; non-ASCII goes through the clipboard (mobilecli) or Maestro", "one")
     p.add_argument("text", help="the text; tap the field first. A text that starts with - goes after --")
     p.epilog = ("ASCII: adb input text, ~1 s. Non-ASCII with mobilecli: pasted through the clipboard (~2–6 s), the "
-                "clipboard is replaced, and the focused field is checked afterwards; without mobilecli: Maestro, ~8–17 s.")
+                "clipboard is replaced, and the focused field is checked afterwards; without mobilecli: Maestro, ~8–17 s. "
+                "No need to check for mobilecli first: type picks the path itself. On a person's own phone the clipboard "
+                "may matter to them: read it with adbm clipboard first and write it back after.")
     p = add("clear-field", cmd_clear_field, "delete the text of the focused field", "one")
     p = add("key", cmd_key, "key: back, home, enter, escape, tab, up/down/left/right, wake, sleep, power, "
             "volume-up/down, notifications, hide-keyboard, or a keycode", "multi")
