@@ -1702,7 +1702,7 @@ def cmd_assert(a):
 
 
 BATCH_COMMANDS = ("ui", "tap", "type", "clear-field", "key", "swipe", "wait", "assert",
-                  "launch", "stop", "clear", "open", "perm", "rotate", "clipboard")
+                  "launch", "stop", "clear", "open", "perm", "rotate", "clipboard", "location")
 
 
 def batch_steps(steps, parser):
@@ -2102,6 +2102,136 @@ def cmd_crashes(a):
     print(f"# API {api} · {len(crashes)} crashes{more}" + (f" of {a.app}" if a.app else "")
           + " · text of one: adbm crashes <id>")
     return 1 if warn and not crashes else 0
+
+
+LOCATION_PROVIDERS = ("gps", "network")
+# the emulator's default location (Googleplex); its console cannot unset a fix
+EMULATOR_HOME = (37.4219983, -122.084)
+# a marker in the command line of the loop that keeps the location fresh
+LOCATION_LOOP = "adbm-location-loop"
+# the same pattern with [p]: it does not match the command line of the shell that runs pkill/pgrep
+LOCATION_PAT = f"'{LOCATION_LOOP[:-1]}[{LOCATION_LOOP[-1]}]'"
+# what the device had before the first `location`: restored by `location clear`
+LOCATION_STATE = "/data/local/tmp/adbm-location.state"
+APPOP = "appops set com.android.shell android:mock_location"
+
+
+def parse_latlon(s):
+    m = re.fullmatch(r"\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*", s)
+    if not m:
+        die(f'location: "lat,lon" like 55.7558,37.6173, or clear; got {s!r}')
+    lat, lon = float(m.group(1)), float(m.group(2))
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        die(f"location: latitude -90…90, longitude -180…180; got {lat},{lon}")
+    return lat, lon
+
+
+def last_location(serial):
+    """The gps provider's last location from `dumpsys location`: (lat, lon, mock) or None.
+    API 31+: "last location=Location[gps …]" inside the "gps provider" block (the passive one has its own);
+    older: "gps: Location[gps …]" under "Last Known Locations", numbers in the device locale (55,755800)."""
+    out = ashell(serial, "dumpsys location", timeout=30)
+    block = re.search(r"^\s+gps provider[^\n]*:\n((?:\s{6,}.*\n?)*)", out, re.M)
+    text = block.group(1) if block else out
+    m = re.search(r"(?:last location=|gps: )Location\[gps (-?\d+)[.,](\d+),(-?\d+)[.,](\d+)([^\]]*)\]", text)
+    if not m:
+        return None
+    return float(f"{m.group(1)}.{m.group(2)}"), float(f"{m.group(3)}.{m.group(4)}"), " mock" in m.group(5)
+
+
+def location_setup_script(lat, lon):
+    """Test providers on API 31+: one && chain, so the exit code and the message tell what failed."""
+    steps = ["cmd location set-location-enabled true", f"{APPOP} allow"]
+    for p in LOCATION_PROVIDERS:
+        steps += [f"{{ cmd location providers add-test-provider {p} >/dev/null 2>&1; true; }}",
+                  f"cmd location providers set-test-provider-enabled {p} true",
+                  f"cmd location providers set-test-provider-location {p} --location {lat},{lon}"]
+    return " && ".join(steps)
+
+
+def location_loop_script(lat, lon):
+    """A test provider reports a location only when it is set, and an app asking for a fresh location gets none
+    after ~30 s: a loop on the device sets it every second until `location clear` or a reboot. It re-grants the
+    appop too: mobilecli resets it when it restarts its agent (`adbm clipboard`, `type`)."""
+    sets = "; ".join(f"cmd location providers set-test-provider-location {p} --location {lat},{lon}"
+                     for p in LOCATION_PROVIDERS)
+    loop = f": {LOCATION_LOOP}; while true; do {APPOP} allow; {sets}; sleep 1; done"
+    # no pkill here: this command line holds the loop's text, pkill -f would end this shell too
+    return f"nohup sh -c {shlex.quote(loop)} >/dev/null 2>&1 &"
+
+
+def location_stop_script():
+    """Stop the loop: sh ends on SIGTERM only after its `sleep 1`, so wait, then SIGKILL what is left —
+    or its last turn sets the old location and appop again."""
+    return (f"pkill -f {LOCATION_PAT}; for i in 1 2 3 4 5 6 7 8 9 10; do pgrep -f {LOCATION_PAT} >/dev/null || break; "
+            # toybox `pkill -9 -f` kills the calling shell whatever the pattern: kill -9 by pid instead
+            f"sleep 0.3; done; for p in $(pgrep -f {LOCATION_PAT}); do kill -9 $p; done; true")
+
+
+def location_clear_script():
+    removes = "; ".join(f"cmd location providers remove-test-provider {p} >/dev/null 2>&1" for p in LOCATION_PROVIDERS)
+    restore = (f"if [ -f {LOCATION_STATE} ]; then read enabled mode < {LOCATION_STATE}; "
+               f"cmd location set-location-enabled $enabled; {APPOP} $mode; rm -f {LOCATION_STATE}; "
+               f"else {APPOP} default; fi")
+    return f"{location_stop_script()}; {removes}; {restore}"
+
+
+def is_emulator(serial):
+    return serial.startswith("emulator-") or "1" in ashell(serial, "getprop ro.kernel.qemu; getprop ro.boot.qemu", timeout=10)
+
+
+def location_set(serial, lat, lon):
+    """API 31+: → (ok, message). Saves the device state on the first set; on any failure removes the override."""
+    adb_ok(serial, location_stop_script(), timeout=30)
+    # the state of the device before adbm, written once: a second `location` must not save adbm's own state
+    adb_ok(serial, f"[ -f {LOCATION_STATE} ] || echo \"$(cmd location is-location-enabled) "
+           f"$(appops get com.android.shell android:mock_location | sed -n 's/.*: \\([a-z]*\\).*/\\1/p')\""
+           f" > {LOCATION_STATE}", timeout=15)
+    ok, out = adb_ok(serial, location_setup_script(lat, lon), timeout=60)
+    if ok:
+        ok, out = adb_ok(serial, location_loop_script(lat, lon), timeout=15)
+    loc = None
+    if ok:
+        time.sleep(1.5)
+        loc = last_location(serial)
+    if ok and loc and abs(loc[0] - lat) <= 1e-4 and abs(loc[1] - lon) <= 1e-4:
+        return True, f"location {lat},{lon} (test providers {', '.join(LOCATION_PROVIDERS)}: apps see it as mock)"
+    adb_ok(serial, location_clear_script(), timeout=60)
+    why = adb_error(out) if not ok else f"dumpsys location shows {loc[:2] if loc else 'no gps location'}"
+    return False, f"{why}; the override is removed"
+
+
+def cmd_location(a):
+    targets = pick(a, multi=True)
+    clear = a.to == "clear"
+    latlon = None if clear or a.to is None else parse_latlon(a.to)
+
+    def one(api, s):
+        if a.to is None:
+            loc = last_location(s)
+            on = bool(ashell(s, f"pgrep -f {LOCATION_PAT}", timeout=15))
+            return True, ((f"{loc[0]:.6f},{loc[1]:.6f}" + (" (mock)" if loc[2] else "")) if loc else "no gps location yet") \
+                + (" · adbm override on" if on else "")
+        if api >= 31:
+            if not clear:
+                return location_set(s, *latlon)
+            ok, out = adb_ok(s, location_clear_script(), timeout=60)
+            return (True, "override removed, location setting and mock_location appop restored") if ok \
+                else (False, adb_error(out))
+        if not is_emulator(s):
+            return False, "a physical device below Android 12 (API 31) is not supported: no shell test providers there"
+        lat, lon = EMULATOR_HOME if clear else latlon
+        code, out, err = adb(s, "emu", "geo", "fix", str(lon), str(lat), timeout=15)  # longitude first
+        if code != 0 or "OK" not in out:
+            return False, trunc((out + err).strip() or "no answer from the emulator console", 160)
+        if clear:
+            return True, (f"the emulator console cannot unset a fix: moved to the emulator's default location {lat},{lon}"
+                          " (a location set in Extended Controls has to be set again there)")
+        return True, f"location {lat},{lon} (emulator GPS: apps that ask for a location get it)"
+    res = parallel(targets, one)
+    for (api, _), (ok, msg) in zip(targets, res):
+        print(f"{api}: " + (msg if ok else f"error — {msg}"))
+    return 0 if all(ok for ok, _ in res) else 1
 
 
 def cmd_open(a):
@@ -3892,6 +4022,9 @@ def build_parser():
     p = add("clipboard", cmd_clipboard, "the device clipboard: without text — read it, with text — write it (needs mobilecli)",
             "multi")
     p.add_argument("text", nargs="?")
+    p = add("location", cmd_location, 'fake GPS: "lat,lon" sets it, clear removes it, nothing shows it. '
+            "API 31+: test providers; an older emulator: its console", "multi")
+    p.add_argument("to", nargs="?", metavar="LAT,LON|clear", help="55.7558,37.6173; a negative latitude after --, flags before it: --api 35 -- -33.86,151.21")
     p = add("crashes", cmd_crashes, "crash history: Java, native and ANR from the logcat crash buffer and dropbox "
             "(dropbox survives a reboot); with an id — the text of one crash", "one")
     p.add_argument("id", nargs="?", help="a crash id from the list")

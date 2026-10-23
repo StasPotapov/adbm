@@ -38,10 +38,11 @@ omit the prefix: run `"$ADBM" <command>`, and set the variable in every Bash cal
 | what is on the screen | `ui --api 35` (`--find <text>` to narrow) |
 | tap, open a screen | `tap "<text>" --expect "<text on the next screen>"` |
 | type into a field, clear it | `type "<text>"`, `clear-field`; non-Latin — see "Limitations" |
+| fake GPS: maps, delivery, city choice | `location 55.7558,37.6173`, `location clear`, `location` shows it; a negative latitude after `--`, flags before it |
 | read or set the clipboard, check a "Copy" button | `clipboard` reads, `clipboard "<text>"` writes; needs mobilecli (`doctor`) |
 | back, home, enter, keyboard, scroll, orientation | `key back` (`home`, `enter`, `hide-keyboard`, …), `swipe up`, `rotate landscape` |
 | wait for a screen, is a text there | `wait "<text>"`, `assert "<text>"`: exit code 0 or 1 |
-| several actions in a row: a form, a known path | `batch 'tap Email' 'type a@b.c' 'tap Next --expect Done' --ui`: one call, stops at the first failure (`--keep-going` — run the rest); steps: `ui tap type clear-field key swipe wait assert launch stop clear open perm rotate clipboard` |
+| several actions in a row: a form, a known path | `batch 'tap Email' 'type a@b.c' 'tap Next --expect Done' --ui`: one call, stops at the first failure (`--keep-going` — run the rest); steps: `ui tap type clear-field key swipe wait assert launch stop clear open perm rotate clipboard location` |
 | install, launch, stop, clear data | `install <apk>`, `launch <pkg>`, `stop`, `clear`, `uninstall` |
 | logs, crash | `log` (the app's process), `log --crash`, `log --grep <re>`; crash history with ANR and native, also before a reboot — `crashes [--app <pkg>]`, one crash — `crashes <id>` |
 | deep link, permission, file | `open <uri>`, `perm <pkg> grant CAMERA`, `push`, `pull` |
@@ -141,3 +142,8 @@ It writes the verdict to `<run>/notes.md` and returns up to 10 lines. Then `boar
 - **`FLAG_SECURE`** (banks, password managers): empty or black frames — see `reference/troubleshooting.md`.
 - API 28: no gesture navigation (`nav=gestural` cells are skipped); dark theme does not reach its system UI.
 - A physical device is picked only when no emulator has that API level: address it with `--serial`.
+- **`location`** on API 31+ is a test provider: apps see the location as mock (`Location.isMock()`), an app
+  that rejects mock locations ignores it. A loop on the device keeps it until `location clear` or a reboot:
+  run `clear` when the check is over; it also restores the location setting and the appop as they were. Checked on emulators only; on a phone (API 31+) it is not checked, and
+  some vendor ROMs may forbid the mock_location appop for the shell. An emulator below API 31 gets a real
+  GPS fix from its console, and `clear` only moves it back to the boot location. A phone below API 31 is not supported.

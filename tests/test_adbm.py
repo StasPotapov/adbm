@@ -430,6 +430,49 @@ class MobilecliTest(unittest.TestCase):
         self.assertEqual([c[0] for c in self.calls], ["shell"])
 
 
+class LocationTest(unittest.TestCase):
+    def test_parse_latlon(self):
+        self.assertEqual(adbm.parse_latlon("55.7558,37.6173"), (55.7558, 37.6173))
+        self.assertEqual(adbm.parse_latlon(" -33.86 , 151.21 "), (-33.86, 151.21))
+        with contextlib.redirect_stderr(io.StringIO()):
+            for bad in ("55.7", "91,0", "0,181", "a,b"):
+                with self.assertRaises(SystemExit):
+                    adbm.parse_latlon(bad)
+
+    def test_scripts(self):
+        setup = adbm.location_setup_script(55.7558, 37.6173)
+        self.assertIn("set-test-provider-location gps --location 55.7558,37.6173", setup)
+        self.assertNotIn("; cmd", setup)  # one && chain: a failed step fails the call
+        loop = adbm.location_loop_script(55.7558, 37.6173)
+        # pkill -f in a command line that holds the loop's text would end that shell
+        self.assertNotIn("pkill", loop)
+        self.assertIn("nohup sh -c ': adbm-location-loop; while true; do appops set com.android.shell "
+                      "android:mock_location allow;", loop)
+        clear = adbm.location_clear_script()
+        self.assertNotIn(adbm.LOCATION_LOOP, clear)
+        self.assertNotIn("pkill -9", clear)
+        self.assertLess(clear.index("kill -9"), clear.index("remove-test-provider"))
+        self.assertIn(adbm.LOCATION_STATE, clear)
+
+    def test_last_location(self):
+        saved = adbm.ashell
+        try:
+            for dump, want in (("    gps provider [mock]:\n      last location=Location[gps 55.755800,37.617300 hAcc=100.0 mock]",
+                                (55.7558, 37.6173, True)),
+                               ("  Last Known Locations:\n    gps: Location[gps 59.938600,30.314098 hAcc=20 et=+3s]",
+                                (59.9386, 30.314098, False)),
+                               ("    passive provider:\n      last location=Location[gps 1.000000,2.000000 mock]\n"
+                                "    gps provider:\n      last location=Location[gps 3.000000,4.000000 hAcc=5]\n",
+                                (3.0, 4.0, False)),
+                               ("  Last Known Locations:\n    gps: Location[gps 55,755800,37,617300 hAcc=20]",
+                                (55.7558, 37.6173, False)),
+                               ("      last location=null", None)):
+                adbm.ashell = lambda s, cmd, timeout=60, d=dump: d
+                self.assertEqual(adbm.last_location("e"), want)
+        finally:
+            adbm.ashell = saved
+
+
 class SaveFlowTest(unittest.TestCase):
     def test_journal_to_flow(self):
         cache = os.environ["ADBM_CACHE"]

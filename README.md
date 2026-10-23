@@ -113,6 +113,7 @@ The CLI works without Claude Code too: `ln -s ~/dev/adbm/skill/bin/adbm /usr/loc
 |---|---|
 | what is on the screen | `adbm ui` |
 | tap and wait for the next screen | `adbm tap "Settings" --expect "Theme"` |
+| fake GPS | `adbm location 55.7558,37.6173`, `adbm location clear` |
 | several actions in one call | `adbm batch 'tap Email' 'type a@b.c' 'tap Next' --ui` |
 | boot the project's emulators | `adbm devices --start` |
 | install a build | `adbm install app.apk --as before` |
