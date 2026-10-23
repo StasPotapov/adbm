@@ -1,0 +1,71 @@
+--------- beginning of crash
+2026-10-23 13:26:54.820  2426  2789 F libc    : Fatal signal 4 (SIGILL), code 1 (ILL_ILLOPC), fault addr 0x7413b09b74 in tid 2789 (greco), pid 2426 (gle.android.tts)
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   : *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   : Build fingerprint: 'google/sdk_gphone64_arm64/emu64a:15/AE3A.240806.036/12592187:user/release-keys'
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   : Revision: '0'
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   : ABI: 'arm64'
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   : Timestamp: 2026-10-23 13:26:55.023887088+0300
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   : Process uptime: 5s
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   : Cmdline: com.google.android.tts
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   : pid: 2426, tid: 2789, name: greco  >>> com.google.android.tts <<<
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   : uid: 10148
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   : tagged_addr_ctrl: 0000000000000001 (PR_TAGGED_ADDR_ENABLE)
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   : pac_enabled_keys: 000000000000000f (PR_PAC_APIAKEY, PR_PAC_APIBKEY, PR_PAC_APDAKEY, PR_PAC_APDBKEY)
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   : signal 4 (SIGILL), code 1 (ILL_ILLOPC), fault addr 0x0000007413b09b74
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :     x0  000000741458e278  x1  000000741458e24c  x2  000000741458e24c  x3  b400007750626dc0
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :     x4  b400007750626dc0  x5  0000000000000001  x6  0000000000000000  x7  0000000000000001
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :     x8  000000000000a7fc  x9  0000000000000001  x10 0000000000000002  x11 b40000775063eb40
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :     x12 0000000000000000  x13 0000000000000001  x14 00000000000000b7  x15 b4000075873bca30
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :     x16 0000000000000001  x17 000000774c2dc9e0  x18 00000073673d4000  x19 000000741455c898
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :     x20 000000741455c894  x21 0000007413a6a5a8  x22 00000074144fa5b0  x23 0000000000000000
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :     x24 0000000000000003  x25 00000000000000e8  x26 00000000000000e0  x27 0000007367f30748
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :     x28 b4000075873b2758  x29 b4000075170c0604
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :     lr  0000007413adc1e8  sp  0000007367f30500  pc  0000007413b09b74  pst 0000000080000000
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   : 33 total frames
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   : backtrace:
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :       #00 pc 0000000001b72b74  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :       #01 pc 0000000001b451e4  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :       #02 pc 0000000001ad3600  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :       #03 pc 0000000000a500fc  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :       #04 pc 0000000001ad3584  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :       #05 pc 0000000001a7e6e4  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :       #06 pc 0000000001a7fb90  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :       #07 pc 0000000001a76fe4  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :       #08 pc 0000000001a6a9a8  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :       #09 pc 0000000001e760d8  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :       #10 pc 0000000000ac70dc  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :       #11 pc 0000000000ac6cec  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :       #12 pc 0000000001a557ac  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :       #13 pc 0000000000ac2280  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :       #14 pc 0000000000ac20ec  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :       #15 pc 0000000001e6fa90  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :       #16 pc 0000000000aa0fcc  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :       #17 pc 0000000001e6f940  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :       #18 pc 0000000000a6e478  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :       #19 pc 0000000000a6e38c  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :       #20 pc 0000000001962e7c  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :       #21 pc 0000000001961bbc  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :       #22 pc 000000000196244c  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :       #23 pc 0000000001961f70  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :       #24 pc 00000000019627b8  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :       #25 pc 0000000001961238  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :       #26 pc 0000000001364d14  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :       #27 pc 0000000001f1c8dc  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :       #28 pc 0000000001f1cf58  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :       #29 pc 0000000001f1cf08  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :       #30 pc 0000000001f1cb0c  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :       #31 pc 000000000006c354  /apex/com.android.runtime/lib64/bionic/libc.so (__pthread_start(void*)+196) (BuildId: 1b9fecf834d610f77e641f026ca7269b)
+2026-10-23 13:26:56.123  2833  2833 F DEBUG   :       #32 pc 000000000005efc4  /apex/com.android.runtime/lib64/bionic/libc.so (__start_thread+64) (BuildId: 1b9fecf834d610f77e641f026ca7269b)
+2026-10-23 13:28:29.193  5355  5355 E AndroidRuntime: FATAL EXCEPTION: main
+2026-10-23 13:28:29.193  5355  5355 E AndroidRuntime: Process: com.android.settings, PID: 5355
+2026-10-23 13:28:29.193  5355  5355 E AndroidRuntime: android.app.RemoteServiceException$CrashedByAdbException: shell-induced crash
+2026-10-23 13:28:29.193  5355  5355 E AndroidRuntime: 	at android.app.ActivityThread.throwRemoteServiceException(ActivityThread.java:2257)
+2026-10-23 13:28:29.193  5355  5355 E AndroidRuntime: 	at android.app.ActivityThread.-$$Nest$mthrowRemoteServiceException(Unknown Source:0)
+2026-10-23 13:28:29.193  5355  5355 E AndroidRuntime: 	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:2557)
+2026-10-23 13:28:29.193  5355  5355 E AndroidRuntime: 	at android.os.Handler.dispatchMessage(Handler.java:107)
+2026-10-23 13:28:29.193  5355  5355 E AndroidRuntime: 	at android.os.Looper.loopOnce(Looper.java:232)
+2026-10-23 13:28:29.193  5355  5355 E AndroidRuntime: 	at android.os.Looper.loop(Looper.java:317)
+2026-10-23 13:28:29.193  5355  5355 E AndroidRuntime: 	at android.app.ActivityThread.main(ActivityThread.java:8705)
+2026-10-23 13:28:29.193  5355  5355 E AndroidRuntime: 	at java.lang.reflect.Method.invoke(Native Method)
+2026-10-23 13:28:29.193  5355  5355 E AndroidRuntime: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:580)
+2026-10-23 13:28:29.193  5355  5355 E AndroidRuntime: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:886)

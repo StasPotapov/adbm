@@ -119,7 +119,7 @@ CLI работает и без Claude Code: `ln -s ~/dev/adbm/skill/bin/adbm /us
 | поставить сборку | `adbm install app.apk --as before` |
 | прогнать сценарий по матрице | `adbm run .adbm/flows/x.yaml --matrix theme=light,dark` |
 | сравнить и показать | `adbm diff`, затем `adbm board --open` |
-| логи приложения | `adbm log`, `adbm log --crash` |
+| логи приложения, падения | `adbm log`, `adbm log --crash`, `adbm crashes` |
 | сколько токенов потрачено и сэкономлено | `adbm status`, `adbm status <прогон>` |
 | проверить окружение | `adbm doctor` |
 

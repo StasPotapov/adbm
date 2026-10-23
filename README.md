@@ -117,7 +117,7 @@ The CLI works without Claude Code too: `ln -s ~/dev/adbm/skill/bin/adbm /usr/loc
 | install a build | `adbm install app.apk --as before` |
 | run a scenario over a matrix | `adbm run .adbm/flows/x.yaml --matrix theme=light,dark` |
 | compare and show | `adbm diff`, then `adbm board --open` |
-| app logs | `adbm log`, `adbm log --crash` |
+| app logs, crashes | `adbm log`, `adbm log --crash`, `adbm crashes` |
 | tokens spent and saved | `adbm status`, `adbm status <run>` |
 | check the environment | `adbm doctor` |
 

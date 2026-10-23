@@ -26,7 +26,7 @@ When a limit is exceeded, `adbm` kills Maestro and prints `HUNG … after step "
 - **device not responding** — `adbm devices`. If the emulator is missing or offline:
   `adbm devices --stop <API>`, then `adbm devices --start <API>`;
 - **"isn't responding" or "has stopped" dialog** — a finding, not a tool failure: `logs/crash-*.txt`,
-  `adbm log --crash`. Tell the person and close the dialog with `adbm tap`;
+  `adbm crashes --app <pkg>` (an ANR is only there), then `adbm crashes <id>`. Tell the person and close the dialog with `adbm tap`;
 - **a foreign window has focus** (permission, keyboard, system dialog) — add a step to the flow,
   or grant the permission before the run: `adbm perm <pkg> grant <PERMISSION>`;
 - **the same step hangs twice** — do not retry a third time; show the person the step and the diagnosis.

@@ -15,6 +15,7 @@
 | `adbm new <slug>`, `adbm status [<прогон>] [--json]` | начать папку прогона; токены и экономия по всем прогонам проекта, `<прогон>` — один прогон с вызовами по командам |
 | `adbm install <apk> [--as before\|after]` | ставит APK на все API параллельно (по умолчанию `after`) |
 | `adbm launch`, `stop`, `clear`, `uninstall`, `open <uri>`, `perm`, `log` | управление приложением: запуск, остановка, данные, deep link, разрешения, хвост [logcat](https://developer.android.com/tools/logcat) |
+| `adbm crashes [--app <pkg>] [-n 20]`, `adbm crashes <id> [--lines 60] [--full]` | история падений, новые сверху: падения Java и native из буфера crash в logcat и из `dumpsys dropbox`, ANR — только из dropbox; dropbox хранит их и после перезагрузки. С id — текст одного падения: 60 строк без дампа регистров native, `--full` — целиком |
 | `adbm push`, `pull`, `rotate`, `devices --stop`, `clean` | файлы, ориентация, остановка эмуляторов, удаление старых прогонов (оставляет 5; без `--yes` только печатает план) |
 | `adbm flow new <slug>` | шаблон flow в `.adbm/flows/` |
 | `adbm ui`, `tap`, `wait`, `assert`, `type`, `clear-field`, `key`, `swipe` | навигация по тексту дерева UI; `tap` печатает, что изменилось на экране, `--expect` ждёт следующий экран |

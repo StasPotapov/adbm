@@ -292,6 +292,62 @@ class BatchTest(unittest.TestCase):
             adbm.pick, adbm.batch_steps = saved
 
 
+class CrashesTest(unittest.TestCase):
+    def fix(self, name):
+        return open(os.path.join(FIX, name)).read()
+
+    def test_logcat(self):
+        lc = adbm.parse_logcat_crashes(self.fix("crash-logcat-api35.txt"))
+        self.assertEqual([(c["kind"], c["process"], c["pid"]) for c in lc],
+                         [("native", "com.google.android.tts", 2426), ("java", "com.android.settings", 5355)])
+        self.assertTrue(lc[0]["title"].startswith("signal 4 (SIGILL)"))
+        self.assertIn("shell-induced crash", lc[1]["title"])
+
+    def test_merge_with_dropbox(self):
+        lc = adbm.parse_logcat_crashes(self.fix("crash-logcat-api35.txt"))
+        db = adbm.parse_dropbox(self.fix("crash-dropbox-api35.txt"))
+        self.assertEqual(len(db), 2)
+        res = adbm.merge_crashes(lc, db)
+        self.assertEqual([c["id"] for c in res], ["1023-132829-5355", "1023-132656-2426"])
+        self.assertEqual([c["sources"] for c in res], [["logcat", "dropbox"]] * 2)
+        # after a reboot only dropbox has them: the ids do not change
+        self.assertEqual([c["id"] for c in adbm.merge_crashes([], adbm.parse_dropbox(self.fix("crash-dropbox-api35.txt")))],
+                         ["1023-132829-5355", "1023-132656-2426"])
+
+    def test_lost_dropbox_entries_join_logcat(self):
+        res = adbm.merge_crashes(adbm.parse_logcat_crashes(self.fix("crash-logcat-api33.txt")),
+                                 adbm.parse_dropbox(self.fix("crash-dropbox-api33.txt")))
+        self.assertEqual([(c["process"], c["pid"]) for c in res],
+                         [("com.android.settings", 7188), ("com.android.settings", 4953)])
+
+    def test_anr(self):
+        text = ("========================================\n2026-10-23 14:00:01 data_app_anr (text, 900 bytes)\n"
+                "Process: com.example\nPID: 777\nSubject: Input dispatching timed out\n\n----- pid 777 -----\n")
+        c = adbm.merge_crashes([], adbm.parse_dropbox(text))[0]
+        self.assertEqual((c["kind"], c["process"], c["pid"], c["title"], c["id"]),
+                         ("anr", "com.example", 777, "Input dispatching timed out", "1023-140001-777"))
+
+    def test_tombstone_copy_and_anr_stay_apart(self):
+        db = self.fix("crash-dropbox-api35.txt")
+        native = db[db.index("========================================\n2026-10-23 13:26:56 system_app_native_crash"):]
+        tomb = native.replace("13:26:56 system_app_native_crash", "13:26:57 SYSTEM_TOMBSTONE", 1)
+        anr = ("========================================\n2026-10-23 13:28:30 system_app_anr (text, 90 bytes)\n"
+               "Process: com.android.settings\nPID: 5355\nSubject: Broadcast of Intent\n\nProcess: other\nPID: 1\n")
+        res = adbm.merge_crashes(adbm.parse_logcat_crashes(self.fix("crash-logcat-api35.txt")),
+                                 adbm.parse_dropbox(db + tomb + anr))
+        self.assertEqual([(c["kind"], c["pid"]) for c in res], [("anr", 5355), ("java", 5355), ("native", 2426)])
+        self.assertEqual(res[0]["title"], "Broadcast of Intent")
+        self.assertIn("shell-induced crash", res[1]["title"])
+        self.assertEqual(res[0]["id"], "1023-132830-5355")
+
+    def test_registers_hidden(self):
+        self.assertTrue(adbm.REGISTERS.match("    rax 0000000000000000  rbx 00007ffd1c2e3f40  rcx 0000000000000000"))
+        self.assertTrue(adbm.REGISTERS.match("    cs  0000000000000033  ss  000000000000002b"))
+        self.assertTrue(adbm.REGISTERS.match("    x0  000000741458e278  x1  000000741458e24c  x2  000000741458e24c"))
+        self.assertTrue(adbm.REGISTERS.match("    lr  0000007413adc1e8  sp  0000007367f30500  pc  0000007413b09b74  pst 0000000080000000"))
+        self.assertFalse(adbm.REGISTERS.match("      #00 pc 0000000001b72b74  /data/app/lib.so"))
+
+
 class SaveFlowTest(unittest.TestCase):
     def test_journal_to_flow(self):
         cache = os.environ["ADBM_CACHE"]

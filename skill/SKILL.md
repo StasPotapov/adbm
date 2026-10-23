@@ -42,7 +42,7 @@ omit the prefix: run `"$ADBM" <command>`, and set the variable in every Bash cal
 | wait for a screen, is a text there | `wait "<text>"`, `assert "<text>"`: exit code 0 or 1 |
 | several actions in a row: a form, a known path | `batch 'tap Email' 'type a@b.c' 'tap Next --expect Done' --ui`: one call, stops at the first failure (`--keep-going` — run the rest); steps: `ui tap type clear-field key swipe wait assert launch stop clear open perm rotate` |
 | install, launch, stop, clear data | `install <apk>`, `launch <pkg>`, `stop`, `clear`, `uninstall` |
-| logs, crash | `log` (the app's process), `log --crash`, `log --grep <re>` |
+| logs, crash | `log` (the app's process), `log --crash`, `log --grep <re>`; crash history with ANR and native, also before a reboot — `crashes [--app <pkg>]`, one crash — `crashes <id>` |
 | deep link, permission, file | `open <uri>`, `perm <pkg> grant CAMERA`, `push`, `pull` |
 | a screenshot | for you to see — `look` (~860 tokens); for the person — `shot <name>`, give the path, do not read it |
 | which devices, boot an emulator | `devices`, `devices --start` (the project's API levels) or `--start 33,35`, `devices --stop 33` |

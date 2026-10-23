@@ -1,0 +1,148 @@
+Drop box contents: 4 entries
+Max entries: 1000
+Low priority rate limit period: 2000 ms
+Low priority tags: {data_app_wtf, keymaster, system_server_wtf, system_app_strictmode, system_app_wtf, system_server_strictmode, data_app_strictmode, netstats}
+Searching for: data_app_crash
+
+(No entries found.)
+Drop box contents: 4 entries
+Max entries: 1000
+Low priority rate limit period: 2000 ms
+Low priority tags: {data_app_wtf, keymaster, system_server_wtf, system_app_strictmode, system_app_wtf, system_server_strictmode, data_app_strictmode, netstats}
+Searching for: system_app_crash
+
+========================================
+2026-10-23 13:28:29 system_app_crash (text, 1157 bytes)
+SystemUptimeMs: 116175
+Process: com.android.settings
+PID: 5355
+UID: 1000
+Frozen: false
+Flags: 0x38ebbe45
+Package: com.android.settings v35 (15)
+Foreground: No
+Process-Runtime: 43186
+Timestamp: 2026-10-23 13:28:29.201+0300
+Build: google/sdk_gphone64_arm64/emu64a:15/AE3A.240806.036/12592187:user/release-keys
+Crash-Handler: com.android.internal.os.RuntimeInit$KillApplicationHandler
+Loading-Progress: 1.0
+Dropped-Count: 0
+
+android.app.RemoteServiceException$CrashedByAdbException: shell-induced crash
+	at android.app.ActivityThread.throwRemoteServiceException(ActivityThread.java:2257)
+	at android.app.ActivityThread.-$$Nest$mthrowRemoteServiceException(Unknown Source:0)
+	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:2557)
+	at android.os.Handler.dispatchMessage(Handler.java:107)
+	at android.os.Looper.loopOnce(Looper.java:232)
+	at android.os.Looper.loop(Looper.java:317)
+	at android.app.ActivityThread.main(ActivityThread.java:8705)
+	at java.lang.reflect.Method.invoke(Native Method)
+	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:580)
+	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:886)
+
+Drop box contents: 4 entries
+Max entries: 1000
+Low priority rate limit period: 2000 ms
+Low priority tags: {data_app_wtf, keymaster, system_server_wtf, system_app_strictmode, system_app_wtf, system_server_strictmode, data_app_strictmode, netstats}
+Searching for: data_app_anr
+
+(No entries found.)
+Drop box contents: 4 entries
+Max entries: 1000
+Low priority rate limit period: 2000 ms
+Low priority tags: {data_app_wtf, keymaster, system_server_wtf, system_app_strictmode, system_app_wtf, system_server_strictmode, data_app_strictmode, netstats}
+Searching for: system_app_anr
+
+(No entries found.)
+Drop box contents: 4 entries
+Max entries: 1000
+Low priority rate limit period: 2000 ms
+Low priority tags: {data_app_wtf, keymaster, system_server_wtf, system_app_strictmode, system_app_wtf, system_server_strictmode, data_app_strictmode, netstats}
+Searching for: data_app_native_crash
+
+(No entries found.)
+Drop box contents: 4 entries
+Max entries: 1000
+Low priority rate limit period: 2000 ms
+Low priority tags: {data_app_wtf, keymaster, system_server_wtf, system_app_strictmode, system_app_wtf, system_server_strictmode, data_app_strictmode, netstats}
+Searching for: system_app_native_crash
+
+========================================
+2026-10-23 13:26:56 system_app_native_crash (text, 8319 bytes)
+SystemUptimeMs: 23204
+Process: com.google.android.tts
+PID: 2426
+UID: 10148
+Frozen: false
+Flags: 0x30cbbec5
+Package: com.google.android.tts v210683481 (googletts.google-speech-apk_20260914.02_p2.986315744)
+Foreground: No
+Process-Runtime: 4976
+Build: google/sdk_gphone64_arm64/emu64a:15/AE3A.240806.036/12592187:user/release-keys
+Loading-Progress: 1.0
+Dropped-Count: 0
+
+*** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
+Build fingerprint: 'google/sdk_gphone64_arm64/emu64a:15/AE3A.240806.036/12592187:user/release-keys'
+Revision: '0'
+ABI: 'arm64'
+Timestamp: 2026-10-23 13:26:55.023887088+0300
+Process uptime: 5s
+Cmdline: com.google.android.tts
+pid: 2426, tid: 2789, name: greco  >>> com.google.android.tts <<<
+uid: 10148
+tagged_addr_ctrl: 0000000000000001 (PR_TAGGED_ADDR_ENABLE)
+pac_enabled_keys: 000000000000000f (PR_PAC_APIAKEY, PR_PAC_APIBKEY, PR_PAC_APDAKEY, PR_PAC_APDBKEY)
+signal 4 (SIGILL), code 1 (ILL_ILLOPC), fault addr 0x0000007413b09b74
+    x0  000000741458e278  x1  000000741458e24c  x2  000000741458e24c  x3  b400007750626dc0
+    x4  b400007750626dc0  x5  0000000000000001  x6  0000000000000000  x7  0000000000000001
+    x8  000000000000a7fc  x9  0000000000000001  x10 0000000000000002  x11 b40000775063eb40
+    x12 0000000000000000  x13 0000000000000001  x14 00000000000000b7  x15 b4000075873bca30
+    x16 0000000000000001  x17 000000774c2dc9e0  x18 00000073673d4000  x19 000000741455c898
+    x20 000000741455c894  x21 0000007413a6a5a8  x22 00000074144fa5b0  x23 0000000000000000
+    x24 0000000000000003  x25 00000000000000e8  x26 00000000000000e0  x27 0000007367f30748
+    x28 b4000075873b2758  x29 b4000075170c0604
+    lr  0000007413adc1e8  sp  0000007367f30500  pc  0000007413b09b74  pst 0000000080000000
+33 total frames
+backtrace:
+      #00 pc 0000000001b72b74  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+      #01 pc 0000000001b451e4  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+      #02 pc 0000000001ad3600  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+      #03 pc 0000000000a500fc  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+      #04 pc 0000000001ad3584  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+      #05 pc 0000000001a7e6e4  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+      #06 pc 0000000001a7fb90  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+      #07 pc 0000000001a76fe4  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+      #08 pc 0000000001a6a9a8  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+      #09 pc 0000000001e760d8  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+      #10 pc 0000000000ac70dc  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+      #11 pc 0000000000ac6cec  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+      #12 pc 0000000001a557ac  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+      #13 pc 0000000000ac2280  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+      #14 pc 0000000000ac20ec  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+      #15 pc 0000000001e6fa90  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+      #16 pc 0000000000aa0fcc  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+      #17 pc 0000000001e6f940  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+      #18 pc 0000000000a6e478  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+      #19 pc 0000000000a6e38c  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+      #20 pc 0000000001962e7c  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+      #21 pc 0000000001961bbc  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+      #22 pc 000000000196244c  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+      #23 pc 0000000001961f70  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+      #24 pc 00000000019627b8  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+      #25 pc 0000000001961238  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+      #26 pc 0000000001364d14  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+      #27 pc 0000000001f1c8dc  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+      #28 pc 0000000001f1cf58  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+      #29 pc 0000000001f1cf08  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+      #30 pc 0000000001f1cb0c  /data/app/~~YhJ5DqOEoX42I9S9yjR51Q==/com.google.android.tts-kPwobakl6P-DVr0olw4mRg==/lib/arm64/libgoogle_speech_sbg_tts_jni.so (BuildId: 11ea4122cb49c9b19d30322a71e283ed)
+      #31 pc 000000000006c354  /apex/com.android.runtime/lib64/bionic/libc.so (__pthread_start(void*)+196) (BuildId: 1b9fecf834d610f77e641f026ca7269b)
+      #32 pc 000000000005efc4  /apex/com.android.runtime/lib64/bionic/libc.so (__start_thread+64) (BuildId: 1b9fecf834d610f77e641f026ca7269b)
+
+Drop box contents: 4 entries
+Max entries: 1000
+Low priority rate limit period: 2000 ms
+Low priority tags: {data_app_wtf, keymaster, system_server_wtf, system_app_strictmode, system_app_wtf, system_server_strictmode, data_app_strictmode, netstats}
+Searching for: SYSTEM_TOMBSTONE
+
+(No entries found.)

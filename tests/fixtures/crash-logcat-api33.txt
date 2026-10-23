@@ -1,0 +1,27 @@
+--------- beginning of crash
+2026-10-23 13:28:29.806  4953  4953 E AndroidRuntime: FATAL EXCEPTION: main
+2026-10-23 13:28:29.806  4953  4953 E AndroidRuntime: Process: com.android.settings, PID: 4953
+2026-10-23 13:28:29.806  4953  4953 E AndroidRuntime: android.app.RemoteServiceException$CrashedByAdbException: shell-induced crash
+2026-10-23 13:28:29.806  4953  4953 E AndroidRuntime: 	at android.app.ActivityThread.throwRemoteServiceException(ActivityThread.java:1991)
+2026-10-23 13:28:29.806  4953  4953 E AndroidRuntime: 	at android.app.ActivityThread.-$$Nest$mthrowRemoteServiceException(Unknown Source:0)
+2026-10-23 13:28:29.806  4953  4953 E AndroidRuntime: 	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:2241)
+2026-10-23 13:28:29.806  4953  4953 E AndroidRuntime: 	at android.os.Handler.dispatchMessage(Handler.java:106)
+2026-10-23 13:28:29.806  4953  4953 E AndroidRuntime: 	at android.os.Looper.loopOnce(Looper.java:201)
+2026-10-23 13:28:29.806  4953  4953 E AndroidRuntime: 	at android.os.Looper.loop(Looper.java:288)
+2026-10-23 13:28:29.806  4953  4953 E AndroidRuntime: 	at android.app.ActivityThread.main(ActivityThread.java:7924)
+2026-10-23 13:28:29.806  4953  4953 E AndroidRuntime: 	at java.lang.reflect.Method.invoke(Native Method)
+2026-10-23 13:28:29.806  4953  4953 E AndroidRuntime: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:548)
+2026-10-23 13:28:29.806  4953  4953 E AndroidRuntime: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:936)
+2026-10-23 13:28:40.228  7188  7188 E AndroidRuntime: FATAL EXCEPTION: main
+2026-10-23 13:28:40.228  7188  7188 E AndroidRuntime: Process: com.android.settings, PID: 7188
+2026-10-23 13:28:40.228  7188  7188 E AndroidRuntime: android.app.RemoteServiceException$CrashedByAdbException: shell-induced crash
+2026-10-23 13:28:40.228  7188  7188 E AndroidRuntime: 	at android.app.ActivityThread.throwRemoteServiceException(ActivityThread.java:1991)
+2026-10-23 13:28:40.228  7188  7188 E AndroidRuntime: 	at android.app.ActivityThread.-$$Nest$mthrowRemoteServiceException(Unknown Source:0)
+2026-10-23 13:28:40.228  7188  7188 E AndroidRuntime: 	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:2241)
+2026-10-23 13:28:40.228  7188  7188 E AndroidRuntime: 	at android.os.Handler.dispatchMessage(Handler.java:106)
+2026-10-23 13:28:40.228  7188  7188 E AndroidRuntime: 	at android.os.Looper.loopOnce(Looper.java:201)
+2026-10-23 13:28:40.228  7188  7188 E AndroidRuntime: 	at android.os.Looper.loop(Looper.java:288)
+2026-10-23 13:28:40.228  7188  7188 E AndroidRuntime: 	at android.app.ActivityThread.main(ActivityThread.java:7924)
+2026-10-23 13:28:40.228  7188  7188 E AndroidRuntime: 	at java.lang.reflect.Method.invoke(Native Method)
+2026-10-23 13:28:40.228  7188  7188 E AndroidRuntime: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:548)
+2026-10-23 13:28:40.228  7188  7188 E AndroidRuntime: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:936)

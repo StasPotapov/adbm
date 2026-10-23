@@ -15,6 +15,7 @@ Without `--api` they use the API levels from the project settings (see [configur
 | `adbm new <slug>`, `adbm status [<run>] [--json]` | start a run folder; tokens and saved tokens of every run of the project, `<run>` — one run with calls per command |
 | `adbm install <apk> [--as before\|after]` | installs an APK on all API levels in parallel (`after` by default) |
 | `adbm launch`, `stop`, `clear`, `uninstall`, `open <uri>`, `perm`, `log` | app control: launch, force-stop, data, deep link, permissions, [logcat](https://developer.android.com/tools/logcat) tail |
+| `adbm crashes [--app <pkg>] [-n 20]`, `adbm crashes <id> [--lines 60] [--full]` | crash history, newest first: Java and native crashes from the logcat crash buffer and `dumpsys dropbox`, ANR only from dropbox; dropbox keeps them after a reboot. With an id — the text of one crash: 60 lines without native register dumps, `--full` — all of it |
 | `adbm push`, `pull`, `rotate`, `devices --stop`, `clean` | files, orientation, stop emulators, delete old runs (keeps 5; without `--yes` only prints the plan) |
 | `adbm flow new <slug>` | a flow template in `.adbm/flows/` |
 | `adbm ui`, `tap`, `wait`, `assert`, `type`, `clear-field`, `key`, `swipe` | navigation by UI tree text; `tap` prints what changed on the screen, `--expect` waits for the next screen |

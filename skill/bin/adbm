@@ -1918,6 +1918,170 @@ def cmd_log(a):
     return 0
 
 
+LOGCAT_LINE = re.compile(r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)\.\d+\s+(\d+)\s+\d+\s+\w\s+(\S+?)\s*: ?(.*)$")
+DROPBOX_TAGS = {"data_app_crash": "java", "system_app_crash": "java", "data_app_anr": "anr", "system_app_anr": "anr",
+                "data_app_native_crash": "native", "system_app_native_crash": "native", "SYSTEM_TOMBSTONE": "native"}
+# register dump lines of a native crash: noise for the agent, shown only with --full
+REGISTERS = re.compile(r"^\s+(?:(?:x\d+|r\d+|lr|sp|pc|ip|fp|pst|cpsr|[re]?(?:ax|bx|cx|dx|si|di|bp|sp|ip)"
+                       r"|r\d+[dwb]?|[c-gs]s|eflags|rflags)\s+[0-9a-f]{8,16}\s*)+$")
+DROPBOX_HEAD = re.compile(r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) (\S+) \((.*)\)$")
+
+
+def native_title(lines):
+    """The line that says why native code died: the abort message, else the signal."""
+    abort = next((l.strip() for l in lines if l.lstrip().startswith("Abort message:")), "")
+    return abort or next((l.strip() for l in lines if re.match(r"\s*signal \d+ \(", l)), "")
+
+
+def parse_logcat_crashes(text):
+    """`logcat -b crash -d -v year` → crashes: Java (AndroidRuntime FATAL EXCEPTION) and native (debuggerd's DEBUG block)."""
+    rows = [m.groups() for m in map(LOGCAT_LINE.match, text.splitlines()) if m]
+    res, cur = [], None
+    for t, pid, tag, msg in rows:
+        if tag == "AndroidRuntime" and msg.startswith("FATAL EXCEPTION"):
+            cur = {"kind": "java", "time": t, "pid": None, "process": "", "lines": [msg], "by": (tag, pid)}
+            res.append(cur)
+        elif tag == "DEBUG" and msg.startswith("*** ***"):
+            cur = {"kind": "native", "time": t, "pid": None, "process": "", "lines": [msg], "by": (tag, pid)}
+            res.append(cur)
+        elif cur and cur["by"] == (tag, pid):
+            cur["lines"].append(msg)
+    for c in res:
+        body = "\n".join(c["lines"])
+        if c["kind"] == "java":
+            # a command started by app_process (uiautomator, am) has only "PID: N", no process name
+            i = next((i for i, l in enumerate(c["lines"]) if l.startswith(("Process: ", "PID: "))), None)
+            m = i is not None and re.match(r"(?:Process: (\S+), )?PID: (\d+)", c["lines"][i])
+            if m:
+                c["process"], c["pid"] = m.group(1) or "", int(m.group(2))
+            c["title"] = c["lines"][i + 1].strip() if i is not None and i + 1 < len(c["lines"]) else ""
+        else:
+            m = re.search(r"pid: (\d+), .*>>> (\S+) <<<", body)
+            if m:
+                c["process"], c["pid"] = m.group(2), int(m.group(1))
+            c["title"] = native_title(c["lines"])
+        c.update(text=body, sources=["logcat"])
+        del c["lines"], c["by"]
+    return res
+
+
+def parse_dropbox(text):
+    """`dumpsys dropbox --print <tag>` for crash tags → crashes. They survive a reboot; ANRs are only here."""
+    res, cur = [], None
+    for line in text.splitlines():
+        m = DROPBOX_HEAD.match(line)
+        if m and m.group(2) in DROPBOX_TAGS:
+            cur = {"kind": DROPBOX_TAGS[m.group(2)], "time": m.group(1), "pid": None, "process": "", "title": "",
+                   "lost": "lost" in m.group(3), "lines": [], "sources": ["dropbox"]}
+            res.append(cur)
+        elif line.startswith("=" * 20) or line.startswith("Drop box contents:"):
+            cur = None
+        elif cur is not None:
+            cur["lines"].append(line)
+    for c in res:
+        lines = c.pop("lines")
+        while lines and not lines[-1].strip():
+            lines.pop()
+        blank = next((i for i, l in enumerate(lines) if not l.strip()), len(lines))
+        head = dict(l.split(": ", 1) for l in lines[:blank] if ": " in l)
+        c["process"] = head.get("Process", "")
+        c["pid"] = int(head["PID"]) if head.get("PID", "").isdigit() else None
+        m = re.search(r"pid: (\d+), .*>>> (\S+) <<<", "\n".join(lines))
+        if m:
+            c["pid"], c["process"] = c["pid"] or int(m.group(1)), c["process"] or m.group(2)
+        if c["kind"] == "anr":
+            c["title"] = head.get("Subject", "")
+        elif c["kind"] == "native":
+            c["title"] = native_title(lines)
+        else:
+            c["title"] = next((l.strip() for l in lines[blank:] if l.strip()), "")
+        c["text"] = "\n".join(lines)
+    return res
+
+
+def merge_crashes(logcat, dropbox):
+    """One list, newest first, with ids MMDD-HHMMSS-pid. Entries of one crash within 5 s are one entry:
+    logcat and dropbox, or two dropbox tags (data_app_native_crash and SYSTEM_TOMBSTONE). Its text is the longest."""
+    def ts(c):
+        return dt.datetime.strptime(c["time"], "%Y-%m-%d %H:%M:%S").timestamp()
+
+    def same(c, d):
+        if c["kind"] != d["kind"] or abs(ts(c) - ts(d)) > 5:
+            return False
+        if c["pid"] and d["pid"]:
+            return c["pid"] == d["pid"]
+        if c["process"] and d["process"]:
+            return c["process"] == d["process"]
+        return bool(c.get("lost") or d.get("lost"))
+    res = list(logcat)
+    for d in dropbox:
+        c = next((c for c in res if same(c, d)), None)
+        if not c:
+            res.append(d)
+            continue
+        if "dropbox" not in c["sources"]:
+            c["sources"].append("dropbox")
+            c["time"] = d["time"]  # the id stays the same after a reboot, when only dropbox has the crash
+        for k in ("pid", "process", "title"):
+            c[k] = c[k] or d[k]
+        if len(d["text"]) > len(c["text"]):
+            c["text"] = d["text"]
+        c["lost"] = c.get("lost") and d.get("lost")
+    # suffixes oldest first: a newer crash with the same second and pid does not change an older id
+    seen = {}
+    for c in sorted(res, key=ts):
+        base = re.sub(r"\D", "", c["time"])[4:] + "-" + str(c["pid"] or 0)
+        base = base[:4] + "-" + base[4:]
+        seen[base] = seen.get(base, 0) + 1
+        c["id"] = base + (f"-{seen[base]}" if seen[base] > 1 else "")
+    return sorted(res, key=ts, reverse=True)
+
+
+def cmd_crashes(a):
+    api, s = pick(a)[0]
+    dump = "for t in " + " ".join(DROPBOX_TAGS) + "; do dumpsys dropbox --print $t; done"
+    (lc_code, lc, lc_err), (db_code, db, db_err) = parallel(
+        [("logcat", s), ("dropbox", s)],
+        lambda what, s_: adb(s_, "logcat", "-b", "crash", "-d", "-v", "year", timeout=60) if what == "logcat"
+        else adb(s_, "shell", dump, timeout=120))
+    if lc_code != 0 and db_code != 0:
+        die(f"[{s}] no answer from the device: {trunc((lc + lc_err).strip() or (db + db_err).strip(), 160)}")
+    warn = []
+    if lc_code != 0:
+        warn.append(f"logcat crash buffer not read: {trunc((lc + lc_err).strip(), 120)}")
+    if db_code != 0 or "Drop box contents" not in db:
+        warn.append(f"dropbox not read: {trunc((db + db_err).strip(), 120) or 'no answer'}")
+    crashes = merge_crashes(parse_logcat_crashes(lc if lc_code == 0 else ""), parse_dropbox(db if db_code == 0 else ""))
+    for w in warn:
+        print("warning: " + w)
+    if a.id:
+        c = next((c for c in crashes if c["id"] == a.id), None)
+        if not c:
+            print(f"{api}: no crash {a.id} — adbm crashes lists them")
+            return 1
+        lines = c["text"].splitlines()
+        if not a.full:
+            lines = [l for l in lines if not REGISTERS.match(l)]
+        print(f"# API {api} · {c['id']} · {c['time']} · {c['kind']} · {c['process'] or '?'} · from {' + '.join(c['sources'])}")
+        if c.get("lost") and not lines:
+            print("dropbox kept only the time: it drops texts on low storage")
+        for l in lines if a.full else lines[:a.lines]:
+            print(trunc(l, 220))
+        if not a.full and len(lines) > a.lines:
+            print(f"… {len(lines) - a.lines} more lines — --full")
+        return 0
+    if a.app:
+        # an app crash always names its process; one whose text dropbox lost may be the app's: kept, shown with "?"
+        crashes = [c for c in crashes if c["process"].split(":")[0] == a.app or c.get("lost") and not c["title"]]
+    for c in crashes[:a.n]:
+        what = c["title"] or ("dropbox lost the text (it does on low storage)" if c.get("lost") else "")
+        print(f"{c['id']}  {c['time'][5:]}  {c['kind']:<6}  {c['process'] or '?'}  {trunc(what, 100)}")
+    more = f", showing {a.n}" if len(crashes) > a.n else ""
+    print(f"# API {api} · {len(crashes)} crashes{more}" + (f" of {a.app}" if a.app else "")
+          + " · text of one: adbm crashes <id>")
+    return 1 if warn and not crashes else 0
+
+
 def cmd_open(a):
     targets = pick(a, multi=True)
 
@@ -3574,6 +3738,13 @@ def build_parser():
     p.add_argument("--tag")
     p.add_argument("--grep", metavar="REGEX")
     p.add_argument("--all", action="store_true", help="all processes")
+    p = add("crashes", cmd_crashes, "crash history: Java, native and ANR from the logcat crash buffer and dropbox "
+            "(dropbox survives a reboot); with an id — the text of one crash", "one")
+    p.add_argument("id", nargs="?", help="a crash id from the list")
+    p.add_argument("--app", help="only this package")
+    p.add_argument("-n", type=int, default=20, help="crashes in the list")
+    p.add_argument("--lines", type=int, default=60, help="lines of one crash")
+    p.add_argument("--full", action="store_true", help="the whole text of one crash")
     p = add("push", cmd_push, "copy a file to the device", "multi")
     p.add_argument("local")
     p.add_argument("remote")
