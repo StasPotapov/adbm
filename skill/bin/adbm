@@ -757,7 +757,7 @@ MODEL_ALIASES = ("sonnet", "opus", "haiku", "fable")
 CONFIG_TEMPLATE = """\
 # adbm settings. A project's .adbm/config.ini overrides values from ~/.config/adbm/config.ini.
 # Claude Code: the adbm skill passes these values to the Agent tool when it starts a subagent.
-# Another agent tool: adapt the "adbm-eyes subagent" section of SKILL.md to it.
+# Another agent tool: adapt the "adbm-eyes subagent" section of reference/visual-check.md to it.
 
 [adbm-eyes]
 # The subagent that looks at frames. Model alias of the Agent tool: sonnet, opus, haiku, fable.
@@ -4040,7 +4040,8 @@ Exit code: that of the first failed step, else 0. In adbm status each step count
   adbm clipboard "Привет" --api 33,35       write on several devices
   adbm clipboard --api 35 -- "-5 ₽"         a text that starts with - goes after --
 
-Writing replaces the device clipboard. On Android 13+ the "copied" overlay is closed, so it does not
+Android 10+ lets only the foreground app read the clipboard: mobilecli reads it through its on-device agent
+with shell rights. Writing replaces the device clipboard. On Android 13+ the "copied" overlay is closed, so it does not
 get into frames. Needs mobilecli: if it is missing, offer `adbm setup --mobilecli --yes` to the person.
 adbm stops mobilecli's on-device agent after each call: while it runs, adbm ui and tap do not work."""
     p = add("location", cmd_location, 'fake GPS: "lat,lon" sets it, "clear" removes it, without an argument it shows '

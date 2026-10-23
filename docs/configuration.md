@@ -68,7 +68,7 @@ If the `adbm-eyes` type is not installed, the skill starts `general-purpose`, an
 the main session's model.
 
 The model setting works only in Claude Code. If you use another tool (Codex and others), adapt
-the "The adbm-eyes subagent" section of `skill/SKILL.md` and `skill/agents/adbm-eyes.md` to it.
+the "The adbm-eyes subagent" section of `skill/reference/visual-check.md` and `skill/agents/adbm-eyes.md` to it.
 
 ## Guard hook
 

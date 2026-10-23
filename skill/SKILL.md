@@ -22,8 +22,8 @@ It has two layers:
 - **Checks.** Built on device control: emulators by API level, Maestro flows in parallel, "before" and
   "after" builds, a diff, an HTML board and the `adbm-eyes` verdict. For "how does it look" and "what changed".
 
-Start with device control. Go to "Visual check" only when the task needs frames to compare,
-several API levels or a theme and navigation matrix.
+Start with device control. Go to "Visual check" (`reference/visual-check.md`) only when the task needs
+frames to compare, several API levels or a theme and navigation matrix.
 
 The CLI is `bin/adbm` of this skill: `ADBM="${CLAUDE_SKILL_DIR}/bin/adbm"`. If the variable is not
 substituted, take the folder from the "Base directory for this skill" line. Run commands from the
@@ -50,7 +50,7 @@ omit the prefix: run `"$ADBM" <command>`, and set the variable in every Bash cal
 | which devices, boot an emulator | `devices`, `devices --start` (the project's API levels) or `--start 33,35`, `devices --stop 33` |
 | device theme, navigation mode, font scale, locale | `prep --theme dark`, `--nav gestural`, `--font-scale 1.3`, `--locale ru-RU --app <pkg>` |
 | no `adbm` command for it | raw `adb -s <serial>` from `reference/adb.md` |
-| how it looks, before/after, several API levels, themes | "Visual check" below |
+| how it looks, before/after, several API levels, themes | `reference/visual-check.md` |
 
 A single action needs no `doctor`, `new`, `diff` or `board`. Only `new` and `run` start a run; outside one
 `adbm` writes to `~/.cache/adbm/`, and `shot`/`record` frames there are unseen by `diff` and `board`.
@@ -76,53 +76,15 @@ A 1080×2400 image costs ~3350 tokens, a line of `adbm ui` ~15.
 
 ## Visual check
 
-1. **Environment.** `doctor`; rows that block the task — show the fix and ask; `setup` without `--yes` only plans.
-   `setup --hook` / `--agent` change the person's Claude Code settings: run them with `--yes` only after a clear yes.
-2. **API levels.** `config` shows the project's set: `devices  apis=…`; commands without `--api` use it.
-   `apis=-` (first check in the project): find `minSdk`/`targetSdk` in `build.gradle*`, offer a set with
-   reasons from `reference/api-matrix.md` and wait for the answer. Then `config --set devices.apis=<list> --project`
-   and `setup`: its plan downloads only the missing system images and AVDs. A change that needs other
-   levels (insets, theme, permissions) — offer them and pass `--api` for this check only.
-3. **Run and builds.** `new <slug>`. Comparing builds: `install <before.apk> --as before --api …`, "before" frames,
-   then `install <after.apk>` and all "after" frames. One build as installed: frames only, `diff` says `after only`.
-4. **Frames.** By hand for 1–2 frames on 1–2 API levels: `prep`, `launch`, `tap`, `shot <name>`.
-   A Maestro flow when the path is longer than 3–4 steps, for a theme/navigation/font matrix, for
-   three API levels or when the check repeats: `flow new <slug>`, then `run .adbm/flows/<slug>.yaml --api 35`,
-   then all API levels with `--matrix`. Details, axes, video: `reference/workflow.md`; writing flows:
-   `reference/flows.md`; a failed or hung `run`: `reference/troubleshooting.md`.
-5. **Diff and board.** `diff`, then `board`. Then start `adbm-eyes` (next section).
-6. **Report.** `<run>/index.html`; counts of expected/problem/review/unchanged; what broke where; 1–3 frames.
-
-**Which build a frame belongs to:** `--as before|after` on `shot`/`run`; without it — the build of the
-last `install` (the run's `.as` file); with no install — `after`.
-
-## The adbm-eyes subagent
-
-Use the agent type `adbm-eyes` (`adbm:adbm-eyes` when ADBM is a plugin) if the Agent tool lists it.
-Otherwise: Agent with `subagent_type: general-purpose` and as the prompt the content
-of `agents/adbm-eyes.md` of this skill without frontmatter.
-
-In both cases model and effort come from the person's settings: run `adbm config` and take
-the `adbm-eyes` line. Pass its `model` and `effort` to the Agent tool; do not pass a value shown as `-`.
-The person sets them in `~/.config/adbm/config.ini` or the project's `.adbm/config.ini`.
-
-Append to the prompt:
-
-```
-Task: <what was changed and what should come out>
-Checklist: <2–6 items>
-Run: <absolute path to the run folder>
-ADBM: <absolute path to the adbm CLI>
-Changed pairs:
-<adbm diff output>
-```
-
-It writes the verdict to `<run>/notes.md` and returns up to 10 lines. Then `board` again (`--open` to show it).
+For "how does it look", "what changed", before/after builds, several API levels, a theme or navigation
+matrix: read `reference/visual-check.md` first. It has the steps (`doctor`, API levels, `new`, frames, `diff`,
+`board`) and how to start the `adbm-eyes` subagent that looks at the frames.
 
 ## References
 
 | File | When to read |
 |---|---|
+| `reference/visual-check.md` | a visual check: steps, the `adbm-eyes` subagent |
 | `reference/workflow.md` | by-hand frames, flows and matrix axes, video, the check in detail |
 | `reference/troubleshooting.md` | `run` failed or hung, black or empty frames, device problems |
 | `reference/flows.md` | writing and fixing a Maestro flow |
@@ -132,18 +94,14 @@ It writes the verdict to `<run>/notes.md` and returns up to 10 lines. Then `boar
 
 ## Limitations
 
-- **Non-Latin text:** `input text` cannot type it. With mobilecli `adbm type` pastes it through the clipboard
-  (~2–3 s on an emulator, ~6 s on a phone over Wi-Fi; the clipboard is replaced) and checks that the focused field got it, without it — Maestro `inputText` (~8–10 s, ~17 s on a phone). If `type` of such text
-  is slow and mobilecli is missing, offer `setup --mobilecli --yes` and run it after a clear yes.
+Details are in `<command> -h`.
+
+- **Non-Latin text:** with mobilecli `type` pastes it through the clipboard (~2–6 s, the clipboard is replaced),
+  without it — Maestro (~8–17 s). Slow and no mobilecli: offer `setup --mobilecli --yes`, run it after a clear yes.
   In a flow write `inputText` as usual.
-- **mobilecli** (`clipboard`, fast non-Latin `type`): Android 10+ lets only the foreground app read the clipboard;
-  mobilecli reads it through an on-device agent with shell rights. That agent blocks `uiautomator dump`. `adbm` stops
-  it after every call; if `ui` fails after mobilecli ran from elsewhere — `reference/troubleshooting.md`.
-- **`FLAG_SECURE`** (banks, password managers): empty or black frames — see `reference/troubleshooting.md`.
-- API 28: no gesture navigation (`nav=gestural` cells are skipped); dark theme does not reach its system UI.
+- **mobilecli** (`clipboard`, fast non-Latin `type`): its on-device agent blocks `uiautomator dump`; `adbm` stops it
+  after every call. `ui` fails after mobilecli ran from elsewhere — `reference/troubleshooting.md`.
+- **`location`** on API 31+: apps see it as mock; it stays until `location clear` or a reboot — run `clear`
+  when the check is over. A phone below API 31 is not supported.
 - A physical device is picked only when no emulator has that API level: address it with `--serial`.
-- **`location`** on API 31+ is a test provider: apps see the location as mock (`Location.isMock()`), an app
-  that rejects mock locations ignores it. A loop on the device keeps it until `location clear` or a reboot:
-  run `clear` when the check is over; it also restores the location setting and the appop as they were. Checked on
-  emulators API 33, 35 and a Pixel on API 37; some vendor ROMs may forbid the mock_location appop for the shell. An emulator below API 31 gets a real
-  GPS fix from its console, and `clear` only moves it back to the boot location. A phone below API 31 is not supported.
+- **`FLAG_SECURE`** (banks, password managers): empty or black frames — `reference/troubleshooting.md`.

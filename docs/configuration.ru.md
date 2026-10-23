@@ -68,7 +68,7 @@ Effort `high` в этом прогоне не помог: субагент по�
 модель главной сессии.
 
 Настройка модели работает только в Claude Code. Если ты работаешь в другом инструменте (Codex и т. п.),
-перепиши под него раздел «The adbm-eyes subagent» в `skill/SKILL.md` и файл `skill/agents/adbm-eyes.md`.
+перепиши под него раздел «The adbm-eyes subagent» в `skill/reference/visual-check.md` и файл `skill/agents/adbm-eyes.md`.
 
 ## Хук-ограждение
 
