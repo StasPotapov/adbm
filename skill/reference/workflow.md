@@ -35,7 +35,17 @@ When you need one or two frames on one or two API levels and the path to the scr
 ```
 
 `prep --theme` sets the system theme. An app may have its own theme setting on top of it: check
-which one the task is about.
+which one the task is about. An in-app theme is not a `--matrix` axis: every app sets it its own way.
+Put the steps that set it into the flow under a condition on a variable, and run once per value:
+`run <flow> -e APP_THEME=dark --group app-dark`, then `-e APP_THEME=light --group app-light`. In the flow:
+
+```yaml
+- runFlow:
+    when:
+      true: ${APP_THEME == "dark"}
+    commands:
+      - tapOn: "Dark theme"
+```
 
 Other input: `type`, `clear-field`, `key back|home|enter|hide-keyboard`, `swipe up|down|x0,y0,x1,y1`,
 `tap --long|--double`, `tap "[N]"`, `rotate`. Switches without a label show as `near="<row text>"`:
@@ -79,7 +89,7 @@ You get an mp4 and a contact sheet `-sheet.png` for the subagent.
 ```
 
 `adbm diff` compares the status bar apart from the content and marks a pair `≈ apiN` when it changed
-the same way as on another API level. Frames only "after" (one build): it prints `after only: N frames`,
+the same way as on another API level. Frames only "after" (one build): it prints `after only: N frames of one build, nothing to compare with`,
 and the subagent judges every frame by the checklist. A frame without its pair is listed as
 `no before frame` or `no after frame`.
 

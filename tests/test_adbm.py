@@ -340,6 +340,24 @@ class CrashesTest(unittest.TestCase):
         self.assertIn("shell-induced crash", res[1]["title"])
         self.assertEqual(res[0]["id"], "1023-132830-5355")
 
+    def test_parse_when(self):
+        now = adbm.dt.datetime(2026, 1, 5, 12, 0)
+        D = adbm.dt.datetime
+        self.assertEqual(adbm.parse_when("6h", now), (D(2026, 1, 5, 6, 0), True))
+        self.assertEqual(adbm.parse_when("90min", now), (D(2026, 1, 5, 10, 30), True))
+        self.assertEqual(adbm.parse_when("2026-01-04 18:30", now), (D(2026, 1, 4, 18, 30), True))
+        self.assertEqual(adbm.parse_when("01-04", now), (D(2026, 1, 4), False))
+        self.assertEqual(adbm.parse_when("1-4", now), (D(2026, 1, 4), False))
+        # later today stays this year; a day that has not come yet is last year's
+        self.assertEqual(adbm.parse_when("01-05 18:00", now)[0], D(2026, 1, 5, 18, 0))
+        self.assertEqual(adbm.parse_when("12-31 23:00", now)[0], D(2025, 12, 31, 23, 0))
+        # 02-29 only in a leap year
+        self.assertEqual(adbm.parse_when("02-29", adbm.dt.datetime(2029, 3, 1))[0], D(2028, 2, 29))
+        with contextlib.redirect_stderr(io.StringIO()):
+            for bad in ("yesterday", "3m", "13-40"):
+                with self.assertRaises(SystemExit):
+                    adbm.parse_when(bad, now)
+
     def test_registers_hidden(self):
         self.assertTrue(adbm.REGISTERS.match("    rax 0000000000000000  rbx 00007ffd1c2e3f40  rcx 0000000000000000"))
         self.assertTrue(adbm.REGISTERS.match("    cs  0000000000000033  ss  000000000000002b"))

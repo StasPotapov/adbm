@@ -1,6 +1,6 @@
 ---
 name: adbm
-description: "Drives an Android device or emulator for the agent instead of raw adb, at a fraction of the tokens: reads the screen as compact text, taps by text, types (Cyrillic too), swipes, presses keys, runs several actions in one call, installs, launches and stops apps, reads logcat and the crash history (ANR, native, before a reboot), opens deep links, grants permissions, fakes the GPS location, reads and writes the clipboard, copies files, takes screenshots. On top of that it checks how the app looks: boots emulators for the needed API levels, runs Maestro flows on them in parallel with a theme and navigation matrix, compares \"before\" and \"after\" builds on an HTML board, and a subagent writes the verdict. - Any adb or device task: \"launch the app on the emulator\", \"what is on the screen\", \"tap Settings\", \"install the APK\", \"show the crash log\", \"why did it crash yesterday\", \"grant the permission\", \"open the deep link\", \"set the location to Moscow\", \"what is in the clipboard\", \"fill in the form\", \"take a screenshot\". Checks: \"check it on the emulator\", \"before/after screenshots\", \"how it looks on API 28/33/35\", \"run the flow in dark theme\", \"check the insets / bottom sheet change\"."
+description: "Drives an Android device or emulator for the agent instead of raw adb, at a fraction of the tokens: reads the screen as compact text, taps by text, types (Cyrillic too), swipes, presses keys, runs several actions in one call, installs, launches and stops apps, reads logcat and the crash history (ANR, native, before a reboot), opens deep links, grants permissions, fakes the GPS location, reads and writes the clipboard, copies files, takes screenshots. On top of that it checks how the app looks: boots emulators for the needed API levels, runs Maestro flows on them in parallel with a theme and navigation matrix, shows the screens on an HTML board, compares \"before\" and \"after\" builds when a change needs checking, and a subagent writes the verdict. - Any adb or device task: \"launch the app on the emulator\", \"what is on the screen\", \"tap Settings\", \"install the APK\", \"show the crash log\", \"why did it crash yesterday\", \"grant the permission\", \"open the deep link\", \"set the location to Moscow\", \"what is in the clipboard\", \"fill in the form\", \"take a screenshot\". Checks: \"check it on the emulator\", \"show me the screens\", \"before/after screenshots\", \"how it looks on API 28/33/35\", \"run the flow in dark theme\", \"check the insets / bottom sheet change\"."
 argument-hint: "<what to do or check> [--api 28,33,35]"
 allowed-tools:
   - Bash
@@ -19,11 +19,12 @@ It has two layers:
 
 - **Device control.** What you would do with `adb`: read the screen, tap, type, run apps, read logs,
   deep links, permissions, files, screenshots. One command per action, no setup and no run folder.
-- **Checks.** Built on device control: emulators by API level, Maestro flows in parallel, "before" and
-  "after" builds, a diff, an HTML board and the `adbm-eyes` verdict. For "how does it look" and "what changed".
+- **Checks.** Built on device control: emulators by API level, Maestro flows in parallel, frames on an HTML
+  board, the `adbm-eyes` verdict. Screens of one build for "how does it look"; "before" and "after" builds
+  with a diff only for "what did the change do".
 
-Start with device control. Go to "Visual check" (`reference/visual-check.md`) only when the task needs
-frames to compare, several API levels or a theme and navigation matrix.
+Start with device control. Go to "Visual check" (`reference/visual-check.md`) when the person wants to see
+screens on a board, several API levels, a theme and navigation matrix, or what a change did.
 
 The CLI is `bin/adbm` of this skill: `ADBM="${CLAUDE_SKILL_DIR}/bin/adbm"`. If the variable is not
 substituted, take the folder from the "Base directory for this skill" line. Run commands from the
@@ -50,7 +51,8 @@ omit the prefix: run `"$ADBM" <command>`, and set the variable in every Bash cal
 | which devices, boot an emulator | `devices`, `devices --start` (the project's API levels) or `--start 33,35`, `devices --stop 33` |
 | device theme, navigation mode, font scale, locale | `prep --theme dark`, `--nav gestural`, `--font-scale 1.3`, `--locale ru-RU --app <pkg>` |
 | no `adbm` command for it | raw `adb -s <serial>` from `reference/adb.md` |
-| how it looks, before/after, several API levels, themes | `reference/visual-check.md` |
+| screens on a page for the person, how it looks on API 33/35, themes | `reference/visual-check.md`, "Screens" |
+| what a change did: a fix, a bug, before/after | `reference/visual-check.md`, "Before/after" |
 
 A single action needs no `doctor`, `new`, `diff` or `board`. Only `new` and `run` start a run; outside one
 `adbm` writes to `~/.cache/adbm/`, and `shot`/`record` frames there are unseen by `diff` and `board`.
@@ -76,15 +78,16 @@ A 1080×2400 image costs ~3350 tokens, a line of `adbm ui` ~15.
 
 ## Visual check
 
-For "how does it look", "what changed", before/after builds, several API levels, a theme or navigation
-matrix: read `reference/visual-check.md` first. It has the steps (`doctor`, API levels, `new`, frames, `diff`,
-`board`) and how to start the `adbm-eyes` subagent that looks at the frames.
+For "how does it look", screens on a board, several API levels, a theme or navigation matrix, and for
+"what did the change do": read `reference/visual-check.md` first. Screens of one build are the default;
+"before" and "after" builds only when the task is about a change. It has the steps (`doctor`, API levels,
+`new`, frames, `diff`, `board`) and how to start the `adbm-eyes` subagent that looks at the frames.
 
 ## References
 
 | File | When to read |
 |---|---|
-| `reference/visual-check.md` | a visual check: steps, the `adbm-eyes` subagent |
+| `reference/visual-check.md` | a visual check: screens or before/after, steps, the `adbm-eyes` subagent |
 | `reference/workflow.md` | by-hand frames, flows and matrix axes, video, the check in detail |
 | `reference/troubleshooting.md` | `run` failed or hung, black or empty frames, device problems |
 | `reference/flows.md` | writing and fixing a Maestro flow |

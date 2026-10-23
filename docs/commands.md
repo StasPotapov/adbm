@@ -17,7 +17,7 @@ Without `--api` they use the API levels from the project settings (see [configur
 | `adbm launch`, `stop`, `clear`, `uninstall`, `open <uri>`, `perm`, `log` | app control: launch, force-stop, data, deep link, permissions, [logcat](https://developer.android.com/tools/logcat) tail |
 | `adbm location <lat,lon>`, `location clear`, `location` | fake GPS on all given API levels; without arguments shows the location. API 31+ (emulator or phone): test providers `gps` and `network`, the location is set every second by a loop on the device, apps see it as mock; `clear` removes them and restores the location setting and the mock_location appop as they were before. An emulator below API 31: its console (`geo fix`), a real GPS fix; `clear` moves it back to the boot location. The loop lives until `clear` or a reboot. Checked on emulators API 28, 33, 35 and on a Pixel with API 37. A negative latitude goes after `--`, flags before it: `adbm location --api 35 -- -33.86,151.21` |
 | `adbm clipboard ["<text>"]` | the device clipboard: without text reads it, with text writes it; needs [mobilecli](https://github.com/mobile-next/mobilecli). On Android 13+ closes the "copied" overlay so it does not get into frames |
-| `adbm crashes [--app <pkg>] [-n 20]`, `adbm crashes <id> [--lines 60] [--full]` | crash history, newest first: Java and native crashes from the logcat crash buffer and `dumpsys dropbox`, ANR only from dropbox; dropbox keeps them after a reboot. With an id — the text of one crash: 60 lines without native register dumps, `--full` — all of it |
+| `adbm crashes [--app <pkg>] [--since 10-22 18:00] [--until 10-22] [-n 20]`, `adbm crashes <id> [--lines 60] [--full]` | crash history, newest first, optionally for a time span (device time, or `12h`, `2d` ago): Java and native crashes from the logcat crash buffer and `dumpsys dropbox`, ANR only from dropbox; dropbox keeps them after a reboot. With an id — the text of one crash: 60 lines without native register dumps, `--full` — all of it |
 | `adbm push`, `pull`, `rotate`, `devices --stop`, `clean` | files, orientation, stop emulators, delete old runs (keeps 5; without `--yes` only prints the plan) |
 | `adbm flow new <slug>` | a flow template in `.adbm/flows/` |
 | `adbm ui`, `tap`, `wait`, `assert`, `type`, `clear-field`, `key`, `swipe` | navigation by UI tree text; `tap` prints what changed on the screen, `--expect` waits for the next screen |
@@ -26,7 +26,7 @@ Without `--api` they use the API levels from the project settings (see [configur
 | `adbm run <flow.yaml> --matrix …` | a [Maestro flow](https://docs.maestro.dev) on all API levels in parallel, theme and navigation matrix |
 | `adbm save-flow` | manual session → Maestro flow |
 | `adbm diff` | pixel diff (540 px, crops, status bar apart), UI tree diff, `≈ apiN` for the same change on another API |
-| `adbm board` | HTML board and `00-summary.png` contact sheet |
+| `adbm board` | HTML board and `00-summary.png` contact sheet; with one build (no "before") — just the frames, without before/after |
 
 ## Run folder
 

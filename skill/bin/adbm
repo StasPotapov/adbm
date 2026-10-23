@@ -2059,7 +2059,33 @@ def merge_crashes(logcat, dropbox):
     return sorted(res, key=ts, reverse=True)
 
 
+def parse_when(s, now):
+    """--since/--until → (datetime, has_time). "2026-10-22 18:00", "10-22 18:00", "2026-10-22", "10-22" in device time,
+    or "6h", "2d", "90min" ago. A date without a year is this year's, or last year's if that day has not come yet."""
+    m = re.fullmatch(r"\s*(\d+)\s*(min|h|d)\s*", s)
+    if m:
+        unit = {"min": "minutes", "h": "hours", "d": "days"}[m.group(2)]
+        return now - dt.timedelta(**{unit: int(m.group(1))}), True
+    m = re.fullmatch(r"\s*(?:(\d{4})-)?(\d{1,2})-(\d{1,2})(?:\s+(\d{1,2}):(\d\d))?\s*", s)
+    if m:
+        y, mo, d, hh, mm = m.groups()
+        # 02-29 exists only in a leap year: try this year, then the one before
+        for year in ([int(y)] if y else [now.year, now.year - 1]):
+            try:
+                t = dt.datetime(year, int(mo), int(d), int(hh or 0), int(mm or 0))
+            except ValueError:
+                continue
+            if y or t.date() <= now.date():
+                return t, hh is not None
+    die(f'--since/--until: "2026-10-22 18:00", "10-22 18:00", "10-22", or "6h", "2d", "90min" ago; got {s!r}')
+
+
 def cmd_crashes(a):
+    if a.id and (a.since or a.until):
+        die("--since/--until filter the list; with a crash id they are not needed")
+    for w in (a.since, a.until):
+        if w:
+            parse_when(w, dt.datetime.now())  # a typo fails now, not after the dump
     api, s = pick(a)[0]
     dump = "for t in " + " ".join(DROPBOX_TAGS) + "; do dumpsys dropbox --print $t; done"
     (lc_code, lc, lc_err), (db_code, db, db_err) = parallel(
@@ -2092,6 +2118,20 @@ def cmd_crashes(a):
         if not a.full and len(lines) > a.lines:
             print(f"… {len(lines) - a.lines} more lines — --full")
         return 0
+    if a.since or a.until:
+        out = ashell(s, "date '+%Y-%m-%d %H:%M:%S'", timeout=10).strip()
+        try:
+            now = dt.datetime.strptime(out, "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            die(f"[{s}] cannot read the device clock: {trunc(out, 120) or 'no answer'}")
+        lo = parse_when(a.since, now)[0] if a.since else dt.datetime.min
+        hi, has_time = parse_when(a.until, now) if a.until else (dt.datetime.max, True)
+        # a date alone in --until means the whole day
+        if not has_time:
+            hi += dt.timedelta(days=1)
+        if lo >= hi:
+            die(f"--since {a.since} is not before --until {a.until}")
+        crashes = [c for c in crashes if lo <= dt.datetime.strptime(c["time"], "%Y-%m-%d %H:%M:%S") < hi]
     if a.app:
         # an app crash always names its process; one whose text dropbox lost may be the app's: kept, shown with "?"
         crashes = [c for c in crashes if c["process"].split(":")[0] == a.app or c.get("lost") and not c["title"]]
@@ -2099,7 +2139,8 @@ def cmd_crashes(a):
         what = c["title"] or ("dropbox lost the text (it does on low storage)" if c.get("lost") else "")
         print(f"{c['id']}  {c['time'][5:]}  {c['kind']:<6}  {c['process'] or '?'}  {trunc(what, 100)}")
     more = f", showing {a.n}" if len(crashes) > a.n else ""
-    print(f"# API {api} · {len(crashes)} crashes{more}" + (f" of {a.app}" if a.app else "")
+    span = f" · {a.since or '…'} → {a.until or 'now'}" if a.since or a.until else ""
+    print(f"# API {api} · {len(crashes)} crashes{more}" + (f" of {a.app}" if a.app else "") + span
           + " · text of one: adbm crashes <id>")
     return 1 if warn and not crashes else 0
 
@@ -3291,7 +3332,7 @@ def cmd_diff(a):
     if not has_pairs:
         twins = sum(1 for r in singles if r["same_as_api"])
         n = sum(1 for r in singles if r["missing"] == "before")
-        print(f"after only: {n} frames, no before pairs" + (f" ({twins} same as another API)" if twins else "")
+        print(f"after only: {n} frames of one build, nothing to compare with" + (f" ({twins} same as another API)" if twins else "")
               + " · judge them by the checklist")
         stats_add(run, _set={"pairs": 0, "pairs_changed": 0, "frames_after_only": n})
         return 0
@@ -3687,7 +3728,10 @@ def cmd_board(a):
         builds = json.load(open(os.path.join(run, "builds.json")))
     except Exception:
         pass
+    # one build only (screens to look at, no comparison): no "before" frame anywhere in the run
+    solo = not any("before" in v for k in frames for v in frames[k].values())
     manifest = {
+        "solo": solo,
         "run": os.path.basename(run.rstrip("/")), "path": run, "created": dt.datetime.now().isoformat(timespec="seconds"),
         "apis": apis, "groups": sorted({k[0] for k in keys}), "items": items, "notes": notes,
         "stats": stats, "builds": builds,
@@ -3697,7 +3741,8 @@ def cmd_board(a):
     with open(os.path.join(out, "manifest.js"), "w") as f:
         f.write("window.MANIFEST = " + json.dumps(manifest, ensure_ascii=False) + ";\n")
     shutil.copy(VIEWER, os.path.join(out, "index.html"))
-    print(f"board: {rel(os.path.join(out, 'index.html'))} · pairs {pairs} · API {','.join(map(str, apis))}")
+    what = f"frames {pairs}, one build" if solo else f"pairs {pairs}"
+    print(f"board: {rel(os.path.join(out, 'index.html'))} · {what} · API {','.join(map(str, apis))}")
     for p, (w, h) in summary:
         tok = -(-w // 28) * -(-h // 28)
         part = f", {len(sheet_keys)} of {len(keys)} frames" if len(sheet_keys) < len(keys) else ""
@@ -4069,11 +4114,14 @@ to the emulator's default location. A phone below API 31 is not supported."""
     p.add_argument("-n", type=int, default=20, help="crashes in the list, newest first (default: 20)")
     p.add_argument("--lines", type=int, default=60, help="lines of one crash, without native register dumps (default: 60)")
     p.add_argument("--full", action="store_true", help="the whole text of one crash, registers included")
+    p.add_argument("--since", metavar="WHEN", help='from this time: "10-22 18:00", "2026-10-22" (device time), or "12h", "2d", "90min" ago')
+    p.add_argument("--until", metavar="WHEN", help='before this time, same forms; a date alone — up to the end of that day')
     p.formatter_class = argparse.RawDescriptionHelpFormatter
     p.epilog = """examples:
   adbm crashes --api 35 --app com.example
     1023-132829-5355  10-23 13:28:29  java    com.example  java.lang.IllegalStateException: …
   adbm crashes --api 35 1023-132829-5355
+  adbm crashes --api 35 --since "10-22 18:00" --until 10-22     yesterday evening
 
 Kinds: java, native (logcat crash buffer and dropbox), anr (dropbox only). Dropbox keeps crashes after
 a reboot, and an id does not change then. "?" in the process column: the text was lost or names no process

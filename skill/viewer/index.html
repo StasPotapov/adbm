@@ -135,7 +135,9 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
 
   $("#run").textContent = M.run;
   document.title = "ADBM · " + M.run;
-  const meta = [["API", M.apis.join(", ")], ["pairs", M.items.length]];
+  // one build only: screens to look at, not before/after pairs
+  const solo = M.solo ?? !M.items.some((i) => i.before);
+  const meta = [["API", M.apis.join(", ")], solo ? ["frames", M.items.length] : ["pairs", M.items.length]];
   for (const [k, v] of Object.entries(M.builds || {})) meta.push([k, (v.package || "") + " · " + (v.apk || "").split("/").pop() + " · " + v.sha1]);
   const st = M.stats || {};
   if (st.frames != null) meta.push(["frames captured", st.frames]);
@@ -146,7 +148,7 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
   $("#summary").innerHTML = (M.summary || []).map((p) => `<a href="${esc(p)}" target="_blank">${esc(p)}</a>`).join("<br>");
   const VCLS = { expected: "ok", problem: "bug", review: "look" };
   $("#notes").innerHTML = M.notes ? esc(M.notes).replace(/\b(EXPECTED|PROBLEM|REVIEW)\b/g, (v) => `<span class="${VCLS[v.toLowerCase()]}">${v}</span>`)
-    : '<span style="color:var(--muted)">no notes.md yet — the adbm-eyes subagent writes the verdict</span>';
+    : '<span style="color:var(--muted)">no notes.md — the adbm-eyes subagent writes it when the frames get a verdict</span>';
 
   const cnt = { problem: 0, review: 0, expected: 0, unchanged: 0 };
   for (const i of M.items) {
@@ -201,11 +203,11 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
         if (!its.length) return "";
         const cells = its.map((i) => {
           const idx = visible.push(i) - 1;
-          const pct = i.same_as_api ? `<span class="pct chg" title="the same change as on API ${i.same_as_api}">${i.pct != null ? i.pct + "% " : ""}≈ API ${i.same_as_api}</span>`
+          const pct = i.same_as_api ? `<span class="pct chg" title="${solo ? "looks the same as" : "the same change as"} on API ${i.same_as_api}">${i.pct != null ? i.pct + "% " : ""}≈ API ${i.same_as_api}</span>`
             : i.pct == null ? "" : i.same ? '<span class="pct same">unchanged</span>' : `<span class="pct chg">${i.pct}%</span>`;
-          const fig = (src, cap) => src ? `<figure><img loading="lazy" src="${esc(src)}" alt="${cap}"><figcaption>${cap}</figcaption></figure>`
+          const fig = (src, cap) => src ? `<figure><img loading="lazy" src="${esc(src)}" alt="${esc(cap || i.name)}">${cap ? `<figcaption>${cap}</figcaption>` : ""}</figure>`
             : `<figure><div class="none">none</div><figcaption>${cap}</figcaption></figure>`;
-          const pair = (i.before || !i.after ? fig(i.before, "before") : "") + fig(i.after, "after");
+          const pair = solo ? fig(i.after, "") : (i.before || !i.after ? fig(i.before, "before") : "") + fig(i.after, "after");
           const ui = i.ui && i.ui.length ? `<div class="ui">${esc(i.ui.slice(0, 4).join(" · "))}</div>` : "";
           const vt = i.api_verdict ? `<div class="vt"><span class="badge ${VCLS[i.api_verdict]}">${esc(i.api_verdict)}</span>${esc(i.verdict_text || "")}</div>` : "";
           return `<div class="cell"><div class="cell-head"><span>API ${i.api}</span>${pct}</div><div class="pair" data-i="${idx}">${pair}</div>${vt}${ui}</div>`;
@@ -232,7 +234,7 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
 
   function open() {
     const i = visible[cur];
-    const modes = [["side", "side by side"]];
+    const modes = [["side", solo ? "frame" : "side by side"]];
     if (i.before && i.after) modes.push(["slider", "slider"]);
     if (i.diff) modes.push(["diff", "diff"]);
     if (i.crop) modes.push(["crop", "changed area"]);
@@ -244,7 +246,7 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
     const body = $("#dlgBody");
     if (mode === "side") {
       body.innerHTML = [["before", i.before], ["after", i.after]].filter((x) => x[1])
-        .map(([c, s]) => `<figure class="side"><img src="${esc(s)}" alt="${c}"><figcaption>${c}</figcaption></figure>`).join("");
+        .map(([c, s]) => `<figure class="side"><img src="${esc(s)}" alt="${c}">${solo ? "" : `<figcaption>${c}</figcaption>`}</figure>`).join("");
     } else if (mode === "crop" || mode === "top") {
       body.innerHTML = `<figure class="side"><img src="${esc(i[mode])}" alt="${mode}"><figcaption>before, then after (left/right or top/bottom)</figcaption></figure>`;
     } else if (mode === "diff") {

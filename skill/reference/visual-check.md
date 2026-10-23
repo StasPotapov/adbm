@@ -1,7 +1,14 @@
 # Visual check
 
-For "how does it look", "what changed", before/after builds, several API levels, a theme or navigation
-matrix. Commands omit the prefix, as in `SKILL.md`: run `"$ADBM" <command>`.
+Frames of the app on the HTML board (`<run>/index.html`) for the person, and a verdict if they want one.
+Two kinds; take the first unless the task is about a change:
+
+- **Screens** — the default. "Show me how it looks", "screenshots of these screens on API 33 and 35",
+  "check the dark theme": the installed build (or one APK), frames, the board. No "before" build.
+- **Before/after** — only to see what a change did: a fix, a refactoring, a bug that should be gone.
+  Two builds, the same frames of each, the diff shows what changed.
+
+Commands omit the prefix, as in `SKILL.md`: run `"$ADBM" <command>`.
 
 ## Steps
 
@@ -19,12 +26,16 @@ matrix. Commands omit the prefix, as in `SKILL.md`: run `"$ADBM" <command>`.
    `--new` gives the trial its own run, so its frames stay out of the check. Do it before step 4.
    Details, axes, video: `reference/workflow.md`; writing flows: `reference/flows.md`;
    a failed or hung `run`: `reference/troubleshooting.md`.
-4. **Run and builds.** `new <slug>` — the run of the check. Comparing builds: `install <before.apk> --as before`,
-   "before" frames (`run … --matrix …` or `shot`), then `install <after.apk>` and the same "after" frames.
-   A "before" APK from the base commit: `reference/setup.md`, "Before" and "after" builds.
-   One build as installed: frames only, `diff` says `after only`.
-5. **Diff and board.** `diff`, then `board`. Then start `adbm-eyes` (next section).
-6. **Report.** `<run>/index.html`; counts of expected/problem/review/unchanged; what broke where; 1–3 frames.
+4. **Run and frames.** `new <slug>` — the run of the check.
+   - Screens: `install <apk>` if the build is not on the devices yet, then the frames (`shot` or `run … --matrix …`).
+   - Before/after: `install <before.apk> --as before`, "before" frames, then `install <after.apk>` and the same
+     "after" frames. A "before" APK from the base commit: `reference/setup.md`, "Before" and "after" builds.
+5. **Diff and board.** `diff`, then `board`. With one build `diff` says `after only` and marks frames that
+   look the same on another API level (`≈ apiN`); the board shows the frames without "before"/"after".
+   A verdict: start `adbm-eyes` (next section) — always for before/after; for screens when the person asked
+   to check something (a checklist), not when they only want to see the screens.
+6. **Report.** The board path (`board --open` shows it); with a verdict — counts of expected/problem/review/unchanged,
+   what broke where, 1–3 frames.
 
 **Which build a frame belongs to:** `--as before|after` on `shot`/`run`; without it — the build of the
 last `install` (the run's `.as` file); with no install — `after`.

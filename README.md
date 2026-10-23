@@ -23,7 +23,8 @@ The agent checks the app, and you only look at the result.
 - **Several API levels at once.** The agent boots emulators for the Android versions you need,
   installs the APK and runs a [Maestro flow](https://docs.maestro.dev) on all API levels in parallel, with a theme and navigation matrix.
 - **Screenshots and video.** The agent saves frames to the run folder, takes a downscaled frame or a crop, records video.
-- **Change checks.** The agent installs "before" and "after" builds and computes a pixel diff.
+  `adbm board` puts the frames on an HTML page: screens of one build to look at, no comparison needed.
+- **Change checks.** When a change needs checking — a fix, a bug — the agent installs "before" and "after" builds and computes a pixel diff.
   Then `adbm` builds an HTML board and a "before | after" PNG contact sheet, and a [subagent](https://code.claude.com/docs/en/sub-agents) writes the verdict.
 
 A 1080×2400 screenshot costs a model ~3350 tokens, so screenshots never enter the agent's context:
@@ -48,6 +49,8 @@ its own output, not files the agent read or its own text. Counters live in each 
 runs (`adbm clean`) removes them from the total. Details: [docs/commands.md](docs/commands.md#measuring-tokens).
 
 ## How it works
+
+Without a change to check, the same goes shorter: one build, `adbm run` or `adbm shot`, `adbm board` with the screens.
 
 1. **Builds.** `adbm install` installs the "before" build on all emulators at once, later the "after" build.
 2. **Scenario.** `adbm run` runs one Maestro flow on all API levels in parallel, in every cell of the theme and navigation matrix.

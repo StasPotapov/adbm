@@ -34,10 +34,11 @@ Command reference: https://docs.maestro.dev/api-reference/commands
   Give a long step an explicit `timeout:`: the `adbm run` watchdog sets its silence limit from it.
 - **State** — a flow starts with `launchApp: {clearState: true}`. The exception is system apps
   such as Settings: do not clear their data, use `stopApp` + `launchApp`.
-  Do not set theme, navigation, font scale or demo mode in the flow: `adbm prep` sets them from `--matrix`.
+  Do not set the system theme, navigation, font scale or demo mode in the flow: `adbm prep` sets them from `--matrix`.
+  An in-app theme is the exception: steps under a condition on `-e APP_THEME`, see `reference/workflow.md`.
 - **Frame names** — `takeScreenshot: "<N>-<state>"`, for example `"3-sheet-expanded"`.
   Do not put the API level, "before/after" or the matrix cell into the name: `adbm` sorts frames into folders.
-- **One flow — one check.** Themes and navigation come from `--matrix`, not from copies of the file.
+- **One flow — one check.** System themes and navigation come from `--matrix`, not from copies of the file.
 - **Scroll to an element** — `scrollUntilVisible`, then `tapOn`.
 - **Non-Latin text in a field** — `inputText: "Привет"` works: checked with Maestro 2.11.0 on API 28, 33
   and 35 (the Maestro docs still say Android takes ASCII only). By hand outside a flow — `adbm type`: it pastes such text through the clipboard with mobilecli, else uses Maestro.

@@ -17,7 +17,7 @@
 | `adbm launch`, `stop`, `clear`, `uninstall`, `open <uri>`, `perm`, `log` | управление приложением: запуск, остановка, данные, deep link, разрешения, хвост [logcat](https://developer.android.com/tools/logcat) |
 | `adbm location <широта,долгота>`, `location clear`, `location` | подмена GPS на всех заданных API; без аргументов показывает позицию. API 31+ (эмулятор или телефон): тестовые провайдеры `gps` и `network`, позицию раз в секунду ставит цикл на устройстве, приложения видят её как mock; `clear` их убирает и возвращает настройку геолокации и appop mock_location, какими они были до подмены. Эмулятор ниже API 31: консоль эмулятора (`geo fix`), настоящая позиция GPS; `clear` возвращает позицию загрузки. Цикл живёт до `clear` или перезагрузки. Проверено на эмуляторах API 28, 33, 35 и на Pixel с API 37. Отрицательная широта — после `--`, флаги — до него: `adbm location --api 35 -- -33.86,151.21` |
 | `adbm clipboard ["<текст>"]` | буфер обмена устройства: без текста читает, с текстом записывает; нужен [mobilecli](https://github.com/mobile-next/mobilecli). На Android 13+ закрывает плашку «скопировано», чтобы она не попала в кадры |
-| `adbm crashes [--app <pkg>] [-n 20]`, `adbm crashes <id> [--lines 60] [--full]` | история падений, новые сверху: падения Java и native из буфера crash в logcat и из `dumpsys dropbox`, ANR — только из dropbox; dropbox хранит их и после перезагрузки. С id — текст одного падения: 60 строк без дампа регистров native, `--full` — целиком |
+| `adbm crashes [--app <pkg>] [--since 10-22 18:00] [--until 10-22] [-n 20]`, `adbm crashes <id> [--lines 60] [--full]` | история падений, новые сверху, можно за промежуток времени (время устройства или `12h`, `2d` назад): падения Java и native из буфера crash в logcat и из `dumpsys dropbox`, ANR — только из dropbox; dropbox хранит их и после перезагрузки. С id — текст одного падения: 60 строк без дампа регистров native, `--full` — целиком |
 | `adbm push`, `pull`, `rotate`, `devices --stop`, `clean` | файлы, ориентация, остановка эмуляторов, удаление старых прогонов (оставляет 5; без `--yes` только печатает план) |
 | `adbm flow new <slug>` | шаблон flow в `.adbm/flows/` |
 | `adbm ui`, `tap`, `wait`, `assert`, `type`, `clear-field`, `key`, `swipe` | навигация по тексту дерева UI; `tap` печатает, что изменилось на экране, `--expect` ждёт следующий экран |
@@ -26,7 +26,7 @@
 | `adbm run <flow.yaml> --matrix …` | [Maestro flow](https://docs.maestro.dev) на всех API параллельно, матрица тем и навигации |
 | `adbm save-flow` | ручная сессия → Maestro flow |
 | `adbm diff` | пиксельный дифф (540 px, кропы, статус-бар отдельно), дифф дерева UI, `≈ apiN` для того же изменения на другом API |
-| `adbm board` | HTML-борд и коллаж `00-summary.png` |
+| `adbm board` | HTML-борд и коллаж `00-summary.png`; с одной сборкой (без «before») — просто кадры, без «до/после» |
 
 ## Папка прогона
 
