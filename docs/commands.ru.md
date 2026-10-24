@@ -11,7 +11,8 @@
 | `adbm config` | настройки из `~/.config/adbm/config.ini` и `.adbm/config.ini`: модель и effort субагента, уровни API; `--set devices.apis=28,33,35 --project` записывает значение |
 | `adbm setup [--api 28,33,35]` | образы, AVD с 4 ГБ памяти, Maestro, Android CLI, mobilecli; `--hook`, `--agent` для Claude Code; без `--yes` — только план |
 | `adbm devices --start [28,33,35]` | поднимает эмуляторы (без значения — из `[devices] apis`), печатает API → serial → экран |
-| `adbm prep` | анимации 0, demo mode статус-бара, тема, навигация, шрифт |
+| `adbm prep` | анимации 0, demo mode статус-бара, тема, навигация, шрифт; первая правка сохраняет состояние устройства |
+| `adbm restore` | возвращает устройство как было до adbm: анимации, demo mode, тема, навигация, шрифт, поворот, языки приложений, подмена GPS. `run` делает это сам в конце (`--keep` — нет), `record --slow` сам возвращает шкалы анимаций |
 | `adbm new <slug>`, `adbm status [<прогон>] [--json]` | начать папку прогона; токены и экономия по всем прогонам проекта, `<прогон>` — один прогон с вызовами по командам |
 | `adbm install <apk> [--as before\|after]` | ставит APK на все API параллельно (по умолчанию `after`) |
 | `adbm launch`, `stop`, `clear`, `uninstall`, `open <uri>`, `perm`, `log` | управление приложением: запуск, остановка, данные, deep link, разрешения, хвост [logcat](https://developer.android.com/tools/logcat) |

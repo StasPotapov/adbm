@@ -5,6 +5,7 @@ import io
 import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -493,6 +494,72 @@ class LocationTest(unittest.TestCase):
                 self.assertEqual(adbm.last_location("e"), want)
         finally:
             adbm.ashell = saved
+
+
+class DeviceStateTest(unittest.TestCase):
+    """prep saves the phone as it was once, restore writes it back: a never-written scale gets 1.0, not a delete."""
+
+    def fake_device(self):
+        dev = {"global": {"window_animation_scale": "1.0", "transition_animation_scale": "1.0"},
+               "system": {"font_scale": "1.15", "accelerometer_rotation": "1"}, "secure": {},
+               "night": "custom_schedule", "nav": "gestural", "log": []}
+
+        def shell(serial, cmd, timeout=60):
+            out = []
+            for c in cmd.split("; "):
+                c = c.replace(" >/dev/null 2>&1", "").strip()
+                dev["log"].append(c)
+                m = re.fullmatch(r"echo (\w+)=\$\(settings get (\w+) \w+\)", c)
+                w = c.split()
+                if m:
+                    out.append(f"{m.group(1)}={dev[m.group(2)].get(m.group(1), 'null')}")
+                elif w[:2] == ["settings", "get"]:
+                    out.append(dev[w[2]].get(w[3], "null"))
+                elif w[:2] == ["settings", "put"]:
+                    dev[w[2]][w[3]] = w[4]
+                elif w[:2] == ["settings", "delete"]:
+                    dev[w[2]].pop(w[3], None)
+                elif c == "cmd uimode night":
+                    out.append(f"Night mode: {dev['night']}")
+                elif w[:3] == ["cmd", "uimode", "night"]:
+                    dev["night"] = w[3]
+                elif c.startswith("cmd overlay list"):
+                    out.append(f"[x] com.android.internal.systemui.navbar.{dev['nav']}")
+                elif c.startswith("cmd overlay enable-exclusive"):
+                    dev["nav"] = c.rsplit(".", 1)[1]
+                elif c.startswith("getprop ro.serialno"):
+                    out.append("PIXEL1")
+                elif c.startswith("cmd locale get-app-locales"):
+                    out.append(f"Locales for {w[3]} for user 0 are []")
+            return "\n".join(out)
+        return dev, shell
+
+    def test_prep_then_restore(self):
+        dev, shell = self.fake_device()
+        saved = adbm.ashell, adbm.adb_ok, adbm.is_emulator, adbm.time.sleep
+        adbm.ashell, adbm.adb_ok = shell, lambda s, cmd, timeout=60: (True, shell(s, cmd))
+        adbm.is_emulator, adbm.time.sleep = (lambda s: False), (lambda x: None)
+        try:
+            ok, _ = adbm.prep_device(37, "p1", theme="light", nav="threebutton", font_scale="1.0")
+            self.assertTrue(ok)
+            self.assertEqual((dev["global"]["animator_duration_scale"], dev["night"], dev["nav"]), ("0", "no", "threebutton"))
+            adbm.prep_device(37, "p1", theme="dark")  # a second prep keeps the first saved state
+            self.assertEqual(adbm.load_saved("p1")["night"], "custom_schedule")
+            ok, text = adbm.restore_device(37, "p1")
+            self.assertTrue(ok, text)
+            self.assertEqual(dev["global"]["animator_duration_scale"], "1.0")  # null → 1.0, a delete leaves it slow
+            self.assertEqual((dev["global"]["window_animation_scale"], dev["system"]["font_scale"]), ("1.0", "1.15"))
+            self.assertEqual((dev["night"], dev["nav"]), ("custom_schedule", "gestural"))
+            self.assertNotIn("show_ime_with_hard_keyboard", dev["secure"])
+            self.assertIsNone(adbm.load_saved("p1"))
+        finally:
+            adbm.ashell, adbm.adb_ok, adbm.is_emulator, adbm.time.sleep = saved
+
+    def test_write_settings(self):
+        cmds = adbm.write_settings_cmds({"animator_duration_scale": "null", "sysui_demo_allowed": "null",
+                                         "font_scale": "1.3", "user_rotation": ""})
+        self.assertEqual(cmds, ["settings put global animator_duration_scale 1.0",
+                                "settings delete global sysui_demo_allowed", "settings put system font_scale 1.3"])
 
 
 class SaveFlowTest(unittest.TestCase):

@@ -11,7 +11,8 @@ Without `--api` they use the API levels from the project settings (see [configur
 | `adbm config` | settings from `~/.config/adbm/config.ini` and `.adbm/config.ini`: subagent model and effort, API levels; `--set devices.apis=28,33,35 --project` writes a value |
 | `adbm setup [--api 28,33,35]` | system images, AVDs with 4 GB RAM, Maestro, Android CLI, mobilecli; `--hook`, `--agent` for Claude Code; without `--yes` it only prints the plan |
 | `adbm devices --start [28,33,35]` | boots emulators (without a value — from `[devices] apis`), prints API → serial → screen |
-| `adbm prep` | animations off, status bar demo mode, theme, navigation mode, font scale |
+| `adbm prep` | animations off, status bar demo mode, theme, navigation mode, font scale; the first change saves the device state |
+| `adbm restore` | puts the device back as it was before adbm: animations, demo mode, theme, navigation, font scale, rotation, app locales, fake GPS. `run` does it by itself at the end (`--keep` — no), `record --slow` puts the animation scales back |
 | `adbm new <slug>`, `adbm status [<run>] [--json]` | start a run folder; tokens and saved tokens of every run of the project, `<run>` — one run with calls per command |
 | `adbm install <apk> [--as before\|after]` | installs an APK on all API levels in parallel (`after` by default) |
 | `adbm launch`, `stop`, `clear`, `uninstall`, `open <uri>`, `perm`, `log` | app control: launch, force-stop, data, deep link, permissions, [logcat](https://developer.android.com/tools/logcat) tail |

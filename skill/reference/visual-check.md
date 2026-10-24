@@ -36,6 +36,8 @@ Commands omit the prefix, as in `SKILL.md`: run `"$ADBM" <command>`.
    to check something (a checklist), not when they only want to see the screens.
 6. **Report.** The board path (`board --open` shows it); with a verdict — counts of expected/problem/review/unchanged,
    what broke where, 1–3 frames.
+7. **Put the devices back.** `restore --api <levels>` after frames taken by hand (`prep`, `rotate`, `location`).
+   `run` puts the device back by itself.
 
 **Which build a frame belongs to:** `--as before|after` on `shot`/`run`; without it — the build of the
 last `install` (the run's `.as` file); with no install — `after`.

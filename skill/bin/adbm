@@ -1321,12 +1321,160 @@ def same_scale(a, b):
         return False
 
 
+# ---------------------------------------------------------------- device state: saved before adbm changes it
+
+# settings adbm changes on a device; the first change saves them, `adbm restore` writes them back
+SAVED_SETTINGS = (("global", "window_animation_scale"), ("global", "transition_animation_scale"),
+                  ("global", "animator_duration_scale"), ("system", "font_scale"),
+                  ("secure", "show_ime_with_hard_keyboard"), ("global", "sysui_demo_allowed"),
+                  ("system", "accelerometer_rotation"), ("system", "user_rotation"))
+ANIM_SCALES = SAVED_SETTINGS[:3]
+# "null" is a setting never written: the system default. A delete does not bring the default back — the window
+# manager keeps the last scale it read (a Pixel kept slow animations after `record --slow`) — so these keys get
+# the default written instead
+SETTING_DEFAULTS = {"window_animation_scale": "1.0", "transition_animation_scale": "1.0",
+                    "animator_duration_scale": "1.0", "font_scale": "1.0"}
+
+
+def read_settings(serial, keys):
+    """{key: value} for (namespace, key) pairs in one shell call; "null" — never written, "" — no answer."""
+    out = ashell(serial, "; ".join(f"echo {k}=$(settings get {ns} {k})" for ns, k in keys), timeout=20)
+    got = dict(l.split("=", 1) for l in out.splitlines() if "=" in l)
+    return {k: got.get(k, "").strip() for _, k in keys}
+
+
+def write_settings_cmds(values):
+    """Shell commands that write saved {key: value} back; a value that is not a number or null is skipped."""
+    ns = {k: n for n, k in SAVED_SETTINGS}
+    cmds = []
+    for k, v in values.items():
+        if not re.fullmatch(r"-?\d+(\.\d+)?|null", v or ""):
+            continue
+        if v != "null":
+            cmds.append(f"settings put {ns[k]} {k} {v}")
+        elif k in SETTING_DEFAULTS:
+            cmds.append(f"settings put {ns[k]} {k} {SETTING_DEFAULTS[k]}")
+        else:
+            cmds.append(f"settings delete {ns[k]} {k}")
+    return cmds
+
+
+def saved_path(serial):
+    return os.path.join(CACHE, f"saved-{serial}.json")
+
+
+_TAGS = {}
+
+
+def device_tag(serial):
+    """Tells devices behind one serial apart: emulator-5554 is whichever AVD booted first. "" — no answer."""
+    if not _TAGS.get(serial):
+        _TAGS[serial] = " ".join(ashell(serial, "getprop ro.boot.qemu.avd_name; getprop ro.kernel.qemu.avd_name; "
+                                                "getprop ro.serialno", timeout=10).split())
+    return _TAGS[serial]
+
+
+def load_saved(serial):
+    try:
+        d = json.load(open(saved_path(serial)))
+    except Exception:
+        return None
+    tag = device_tag(serial)
+    # no answer from getprop is not another device: a lost snapshot would be overwritten with adbm's own state
+    return d if not tag or d.get("tag") == tag else None
+
+
+def night_nav(serial):
+    """(night mode word: yes/no/auto/custom_schedule…, navbar overlay: gestural/threebutton…) — None if unknown."""
+    out = ashell(serial, "cmd uimode night; cmd overlay list 2>/dev/null | grep navbar", timeout=20)
+    night = re.search(r"Night mode: (\w+)", out)
+    nav = re.search(r"\[x\] com\.android\.internal\.systemui\.navbar\.(\w+)", out)
+    return (night.group(1) if night else None), (nav.group(1) if nav else None)
+
+
+def app_locales(serial, app):
+    """"Locales for <app> for user 0 are [ru-RU]" → "ru-RU"; "" — the app follows the system."""
+    m = re.search(r"are \[(.*)\]", ashell(serial, f"cmd locale get-app-locales {app}", timeout=15))
+    return m.group(1).replace(" ", "") if m else ""
+
+
+def set_locale_cmd(app, loc):
+    return f"cmd locale set-app-locales {app}" + (f" --locales {loc}" if loc else "")
+
+
+def save_state(api, serial, app=None):
+    """Save the device state before adbm changes it: settings, theme, navigation, the app locale.
+
+    Only the first change writes it — a second `prep` must not save adbm's own state; a new app adds its locale.
+    """
+    d = load_saved(serial)
+    if d is None:
+        night, nav = night_nav(serial)
+        d = {"api": api, "tag": device_tag(serial), "settings": read_settings(serial, SAVED_SETTINGS),
+             "night": night, "nav": nav, "locales": {}}
+    elif not app or api < 33 or app in d["locales"]:
+        return
+    if app and api >= 33:
+        d["locales"][app] = app_locales(serial, app)
+    os.makedirs(CACHE, exist_ok=True)
+    json.dump(d, open(saved_path(serial), "w"))
+
+
+def restore_device(api, serial, app=None):
+    """Put back what adbm changed: saved settings, theme, navigation, app locales; demo mode and fake GPS off.
+
+    Returns (ok, text). Without a saved state: an emulator gets the defaults, a phone gets animations 1.
+    `app` — also reset that app's locale when it is not in the saved state. The saved state is kept on a failure.
+    """
+    gps = api >= 31 and bool(ashell(serial, f"pgrep -f {LOCATION_PAT}", timeout=15))
+    if gps:
+        adb_ok(serial, location_clear_script(), timeout=60)
+    d = load_saved(serial)
+    with contextlib.suppress(FileNotFoundError):
+        os.remove(pinned_path(serial))
+    if d is None and is_emulator(serial):
+        ok, text = prep_device(api, serial, app=app, reset=True)
+        return ok, text + (", fake location removed" if gps else "")
+    d = d or {"settings": {k: "null" for _, k in ANIM_SCALES}, "night": None, "nav": None, "locales": {}}
+    adb_ok(serial, "am broadcast -a com.android.systemui.demo -e command exit", timeout=30)
+    cmds = write_settings_cmds(d["settings"])
+    night, nav = night_nav(serial)
+    if d["night"] and d["night"] != night:
+        cmds.append(f"cmd uimode night {d['night']}")
+    if d["nav"] and d["nav"] != nav:
+        cmds.append(f"cmd overlay enable-exclusive --category com.android.internal.systemui.navbar.{d['nav']}")
+    locales = {**({app: ""} if app and api >= 33 else {}), **d["locales"]}
+    cmds += [set_locale_cmd(k, v) for k, v in locales.items()]
+    if cmds:
+        ashell(serial, "; ".join(c + " >/dev/null 2>&1" for c in cmds), timeout=60)
+    if any("navbar" in c for c in cmds):
+        time.sleep(3)
+    left = read_settings(serial, ANIM_SCALES)
+    s = d["settings"]
+    want = [SETTING_DEFAULTS[k] if s.get(k) == "null" else s.get(k) for _, k in ANIM_SCALES]
+    text = "restored: animations " + "/".join(left[k] for _, k in ANIM_SCALES) + ", demo mode off"
+    text += f", theme {d['night']}" if d["night"] else ""
+    text += f", nav {d['nav']}" if d["nav"] else ""
+    text += f", font scale {s['font_scale']}" if s.get("font_scale") not in (None, "", "null") else ""
+    text += f", app locales {len(locales)}" if locales else ""
+    text += ", fake location removed" if gps else ""
+    bad = [k for (_, k), w in zip(ANIM_SCALES, want) if w and not same_scale(left[k], w)]
+    if bad:
+        return False, f"error — {', '.join(bad)} did not change, the saved state is kept ({text})"
+    with contextlib.suppress(FileNotFoundError):
+        os.remove(saved_path(serial))
+    return True, text
+
+
 def prep_device(api, serial, theme=None, nav=None, font_scale=None, locale=None, app=None, reset=False):
     """Set and check theme, navigation, font scale, locale; animations off, demo mode on.
 
     Returns (ok, text). Only axes that differ from the device are changed: a navbar change restarts the system UI.
+    The first change saves the device state for `adbm restore`.
     """
     notes, errors = [], []
+    if not reset:
+        save_state(api, serial, app if locale else None)
     if reset:
         theme, nav, font_scale = DEFAULT_AXES["theme"], DEFAULT_AXES["nav"], DEFAULT_AXES["font_scale"]
     have = device_axes(api, serial)
@@ -1344,12 +1492,11 @@ def prep_device(api, serial, theme=None, nav=None, font_scale=None, locale=None,
             cmds.append(f"cmd overlay enable-exclusive --category com.android.internal.systemui.navbar.{nav}")
     if locale or (reset and app):
         if api >= 33 and app:
-            cmds.append(f"cmd locale set-app-locales {app}" + (f" --locales {locale}" if locale and not reset else ""))
+            cmds.append(set_locale_cmd(app, locale if not reset else ""))
         elif not reset:
             notes.append("locale skipped: needs API 33+ and --app <package>")
     scale = "1" if reset else "0"
-    cmds += [f"settings put global {k} {scale}" for k in
-             ("window_animation_scale", "transition_animation_scale", "animator_duration_scale")]
+    cmds += [f"settings put global {k} {scale}" for _, k in ANIM_SCALES]
     if not reset:
         cmds.append("settings put secure show_ime_with_hard_keyboard 0")
     ashell(serial, "; ".join(c + " >/dev/null 2>&1" for c in cmds), timeout=60)
@@ -1383,17 +1530,25 @@ def prep_device(api, serial, theme=None, nav=None, font_scale=None, locale=None,
 
 
 def cmd_prep(a):
+    if a.reset:
+        return cmd_restore(a)
     targets = pick(a, multi=True)
-    res = parallel(targets, lambda api, s: prep_device(api, s, a.theme, a.nav, a.font_scale, a.locale, a.app, a.reset))
+    res = parallel(targets, lambda api, s: prep_device(api, s, a.theme, a.nav, a.font_scale, a.locale, a.app))
     os.makedirs(CACHE, exist_ok=True)
     for (api, s), (ok, _) in zip(targets, res):
-        if a.reset:
-            with contextlib.suppress(FileNotFoundError):
-                os.remove(pinned_path(s))
-        elif ok:
+        if ok:
             axes = {**load_pinned(api, s), **{k: getattr(a, k) for k in AXES if getattr(a, k)}}
             json.dump({"api": api, "axes": axes}, open(pinned_path(s), "w"))
     for (api, s), (ok, r) in zip(targets, res):
+        print(f"{api}: {r}")
+    print("when the check is over: adbm restore — puts the device back as it was")
+    return 0 if all(ok for ok, _ in res) else 1
+
+
+def cmd_restore(a):
+    targets = pick(a, multi=True)
+    res = parallel(targets, lambda api, s: restore_device(api, s, getattr(a, "app", None)))
+    for (api, _), (ok, r) in zip(targets, res):
         print(f"{api}: {r}")
     return 0 if all(ok for ok, _ in res) else 1
 
@@ -2256,6 +2411,7 @@ def cmd_location(a):
                 + (" · adbm override on" if on else "")
         if api >= 31:
             if not clear:
+                save_state(api, s)
                 return location_set(s, *latlon)
             ok, out = adb_ok(s, location_clear_script(), timeout=60)
             return (True, "override removed, location setting and mock_location appop restored") if ok \
@@ -2396,7 +2552,7 @@ def cmd_rotate(a):
     else:
         cmds = ["settings put system accelerometer_rotation 0",
                 f"settings put system user_rotation {0 if a.to == 'portrait' else 1}"]
-    res = parallel(targets, lambda api, s: adb_ok(s, "; ".join(cmds)))
+    res = parallel(targets, lambda api, s: (save_state(api, s), adb_ok(s, "; ".join(cmds)))[1])
     for (api, _), (ok, out) in zip(targets, res):
         print(f"{api}: " + (f"rotation {a.to}" if ok else f"error — {trunc(out, 160)}"))
     return 0 if all(ok for ok, _ in res) else 1
@@ -2933,7 +3089,27 @@ def cmd_run(a):
     for e in a.env or []:
         envs += ["-e", e]
 
+    back = {}
+
     def one(api, s):
+        """Cells on one device, then the device goes back to how it was before the run."""
+        prepped = os.path.exists(pinned_path(s))  # `adbm prep` by hand: give back its state, else the original
+        before = device_axes(api, s) if prepped else {}
+        locales = app_locales(s, app) if prepped and app and api >= 33 and any(c.get("locale") for c in cells) \
+            else None
+        try:
+            return cells_on(api, s)
+        finally:
+            if a.keep or load_saved(s) is None:
+                pass
+            elif not prepped:
+                back[api] = restore_device(api, s)
+            else:
+                back[api] = prep_device(api, s, **{k: v for k, v in before.items() if v})
+                if locales is not None:
+                    ashell(s, set_locale_cmd(app, locales))
+
+    def cells_on(api, s):
         res = []
         if min_sdk and api < min_sdk:
             return [(cell, "skip", f"build {version} has minSdk {min_sdk}", 0) for cell in cells]
@@ -3041,8 +3217,13 @@ def cmd_run(a):
             else:
                 fails += 1
                 print(f"{label}: FAILED, frames {n} — {why}" + (f" → {rel(r[4])}" if r[4] else ""))
+    for api, (ok, why) in sorted(back.items()):
+        if not ok:
+            print(f"{api}: device not put back — {why} · adbm restore --api {api}")
     stats_add(run, frames=total)
-    print(f"total frames {total}" + (f", failures {fails}" if fails else "") + " · next: adbm diff, adbm board")
+    print(f"total frames {total}" + (f", failures {fails}" if fails else "")
+          + (" · devices left as the run set them: adbm restore puts them back" if a.keep
+             else " · devices put back as they were" if back and all(ok for ok, _ in back.values()) else "") + " · next: adbm diff, adbm board")
     return 1 if fails else 0
 
 
@@ -3360,8 +3541,9 @@ def cmd_record(a):
     d = os.path.join(run, "video", f"api{api}", version)
     os.makedirs(d, exist_ok=True)
     base = os.path.join(d, slugify_name(a.name))
-    anim = ("window_animation_scale", "transition_animation_scale", "animator_duration_scale")
+    anim = [k for _, k in ANIM_SCALES]
     if a.slow:
+        save_state(api, s)  # a killed record skips the finally below: `adbm restore` still puts the scales back
         was = {k: ashell(s, f"settings get global {k}") for k in anim}
         ashell(s, "; ".join(f"settings put global {k} {a.slow}" for k in anim))
     adb(s, "shell", "rm -f /sdcard/adbm-rec.mp4")
@@ -3381,10 +3563,11 @@ def cmd_record(a):
     finally:
         if a.slow:
             if all(re.fullmatch(r"\d+(\.\d+)?|null", v) for v in was.values()):
-                ashell(s, "; ".join(f"settings delete global {k}" if v == "null" else f"settings put global {k} {v}"
-                                    for k, v in was.items()))
+                ashell(s, "; ".join(write_settings_cmds(was)))
+            elif os.path.exists(pinned_path(s)):
+                prep_device(api, s, **load_pinned(api, s))  # back to what `adbm prep` set
             else:
-                prep_device(api, s, **load_pinned(api, s))
+                restore_device(api, s)
     if not os.path.exists(base + ".mp4") or os.path.getsize(base + ".mp4") < 1000:
         die("the video was not recorded (screenrecord may not work on this image)")
     sheet = base + "-sheet.png"
@@ -3991,7 +4174,10 @@ def build_parser():
     p.add_argument("--font-scale")
     p.add_argument("--locale")
     p.add_argument("--app", help="package for --locale (per-app locale, API 33+)")
-    p.add_argument("--reset", action="store_true")
+    p.add_argument("--reset", action="store_true", help="the same as adbm restore")
+    p.epilog = "The first change saves the device state; adbm restore puts it back when the check is over."
+    p = add("restore", cmd_restore, "put the device back as it was before adbm changed it: animations, demo mode, "
+            "theme, navigation, font scale, rotation, app locales, fake location", "multi")
     p = add("install", cmd_install, "install an APK on devices", "multi")
     p.add_argument("apk")
     p.add_argument("--as", dest="as_", choices=VERSIONS, default="after", help="default: after")
@@ -4161,6 +4347,8 @@ a reboot, and an id does not change then. "?" in the process column: the text wa
     p.add_argument("--group", default="", help="extra group subfolder")
     p.add_argument("-e", "--env", action="append", help="Maestro variable KEY=VALUE")
     p.add_argument("--new", action="store_true", help="start a new run")
+    p.add_argument("--keep", action="store_true", help="leave theme, navigation, animations as the run set them "
+                   "(the next run skips the change); adbm restore puts them back")
     p.add_argument("--timeout", type=int, help="limit per cell, s (default: 2 × last run, or 600)")
     p.add_argument("--stall", type=int, help="Maestro silent for longer — a hang, s (default: longest wait in the flow + 20, at least 45)")
     p = add("save-flow", cmd_save_flow, "manual action journal → Maestro flow")

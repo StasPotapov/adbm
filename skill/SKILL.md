@@ -54,6 +54,7 @@ omit the prefix: run `"$ADBM" <command>`, and set the variable in every Bash cal
 | a screenshot | for you to see — `look` (~860 tokens); for the person — `shot <name>`, give the path, do not read it |
 | which devices, boot an emulator | `devices`, `devices --start` (the project's API levels) or `--start 33,35`, `devices --stop 33` |
 | device theme, navigation mode, font scale, locale | `prep --theme dark`, `--nav gestural`, `--font-scale 1.3`, `--locale ru-RU --app <pkg>` |
+| put the device back after a check | `restore`: animations, demo mode, theme, navigation, font scale, rotation, app locales, fake GPS — as before adbm |
 | no `adbm` command for it | raw `adb -s <serial>` from `reference/adb.md` |
 | screens on a page for the person, how it looks on API 33/35, themes | `reference/visual-check.md`, "Screens" |
 | what a change did: a fix, a bug, before/after | `reference/visual-check.md`, "Before/after" |
@@ -98,6 +99,14 @@ For "how does it look", screens on a board, several API levels, a theme or navig
 | `reference/api-matrix.md` | which API levels and axes to offer for a change |
 | `reference/setup.md` | SDK, AVDs, Maestro, Android CLI, mobilecli, a "before" build in a worktree |
 | `reference/adb.md` | raw adb for what `adbm` does not do |
+
+## Leave the device as you found it
+
+`prep`, `rotate`, `location` and `record --slow` change device settings. The first change saves the
+device state; `restore` writes it back. When the check is over, run `restore` on every device you
+changed — always on a physical phone: it is the person's own. `run` puts the device back by itself
+(`--keep` leaves it for the next run), `record --slow` puts the animation scales back by itself.
+Change device settings only with `adbm`, not raw `adb`: a raw change is not saved, and `restore` cannot undo it.
 
 ## Limitations
 

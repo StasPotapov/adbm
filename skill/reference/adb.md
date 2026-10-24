@@ -39,6 +39,10 @@ and does not start the app. That is why `adbm launch` uses `am start`.
 
 ## Accessibility and display
 
+`adbm restore` does not know about these. Before a change, read the value (`settings get secure <key>`,
+`null` — never set); when the check is over, write it back (`settings delete` for `null`).
+For `*_animation_scale` and `font_scale` write `1.0` instead of a delete: after a delete Android may keep the old scale.
+
 ```bash
 adb -s SERIAL shell settings put secure high_text_contrast_enabled 1
 adb -s SERIAL shell settings put secure accessibility_display_inversion_enabled 1
@@ -47,7 +51,7 @@ adb -s SERIAL shell settings put secure enabled_accessibility_services \
 adb -s SERIAL shell cmd uimode night auto                  # adbm prep sets only yes/no
 ```
 
-Theme, navigation mode, font scale and animations: `adbm prep`, not raw adb.
+Theme, navigation mode, font scale and animations: `adbm prep`, not raw adb: `adbm restore` undoes only what adbm saved.
 
 ## adb failures
 

@@ -32,6 +32,7 @@ When you need one or two frames on one or two API levels and the path to the scr
 "$ADBM" ui --api 35                           # [3] Button "Close" id=close click; --xy adds @x,y
 "$ADBM" tap --api 35 "Close" --expect "Saved" # text, content-desc, id; --scroll 4 to scroll
 "$ADBM" shot 1-sheet --api 35 --as before     # the frame goes to the run, not to the context
+"$ADBM" restore --api 35                      # the device as it was before prep
 ```
 
 `prep --theme` sets the system theme. An app may have its own theme setting on top of it: check
@@ -70,7 +71,11 @@ A manual check grew — `adbm save-flow <slug> --api 35` turns the journal of `l
   `builds.json` or the flow's `appId`); a `locale` cell without a package or below API 33 is skipped.
   By hand, `prep --locale` needs `--app <package>`.
 - Axes outside `--matrix` take what `adbm prep` set by hand on that device, else the defaults: light theme,
-  three-button navigation, font scale 1.0. `prep --reset` restores the defaults and forgets the hand-set values.
+  three-button navigation, font scale 1.0.
+- `run` puts the device back as it was before the run: after `adbm prep` — to that state, else to the state
+  before adbm. `--keep` leaves the run's settings, so the next run does not change them again.
+- `restore` (or `prep --reset`) puts the device back as it was before the first `adbm` change and forgets the
+  hand-set values. A device without a saved state: an emulator gets the defaults, a phone gets animations 1.
 - `prep` checks that the device took each setting; a cell whose setting did not apply fails.
 - `run` checks that the app is installed, drives all API levels in parallel and prints one line per cell.
 - Keep flows in `<project>/.adbm/flows/`: `run` warns about a flow elsewhere.
