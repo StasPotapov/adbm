@@ -106,7 +106,7 @@ Skill тогда называется `adbm:adbm`, агент — `adbm:adbm-eye
 
 Затем поставь Pillow (см. ниже) и попроси агента проверить окружение: он запустит `adbm doctor`.
 Плагин не добавляет `adbm` в PATH терминала. Чтобы работать из терминала, клонируй репозиторий, как ниже.
-Новая версия: `/plugin marketplace update sp-tools`, затем `/plugin update adbm@sp-tools`.
+Новая версия: `/plugin marketplace update sp-tools`, затем `claude plugin update adbm@sp-tools` (в терминале).
 
 **Из клона.** Skill — симлинк, хук и агента добавляет `adbm setup`:
 

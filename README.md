@@ -105,7 +105,7 @@ The skill is then called `adbm:adbm`, the agent `adbm:adbm-eyes`.
 
 Then install Pillow (see below) and run `adbm doctor` through the agent: ask it to check the environment.
 The plugin does not put `adbm` on the terminal's PATH; for terminal use, clone the repository as below.
-To get a new version: `/plugin marketplace update sp-tools`, then `/plugin update adbm@sp-tools`.
+To get a new version: `/plugin marketplace update sp-tools`, then `claude plugin update adbm@sp-tools` (in the shell).
 
 **From a clone.** The skill is a symlink, the hook and the agent are added by `adbm setup`:
 
