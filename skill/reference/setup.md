@@ -67,9 +67,12 @@ adbm devices --stop 33                             # only if you booted it here
 ```
 
 Every command must end with exit code 0. If `wait` prints `uiautomator dump failed: cat: /sdcard/…:
-No such file or directory`, the emulator has not mounted its shared storage (seen on an API 35 AVD).
-Stop it and boot it again; if it repeats, wipe the AVD data in Android Studio → Device Manager, or
-use another API level.
+No such file or directory`, the device has a screen lock (PIN, pattern or password) and nobody has
+unlocked it since boot: Android opens the shared storage only after the first unlock
+(`adb shell dumpsys user` shows `RUNNING_LOCKED`). Unlock it on the screen, or remove the lock with
+`adb shell cmd lock_settings clear --old <PIN>`. For an emulator whose PIN nobody knows, the person
+agrees to lose its apps and data, then boot it once with
+`emulator -avd <AVD> -wipe-data -no-window` and check again.
 
 ## Android CLI
 
