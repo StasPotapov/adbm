@@ -97,7 +97,7 @@ For "how does it look", screens on a board, several API levels, a theme or navig
 | `reference/troubleshooting.md` | `run` failed or hung, black or empty frames, device problems |
 | `reference/flows.md` | writing and fixing a Maestro flow |
 | `reference/api-matrix.md` | which API levels and axes to offer for a change |
-| `reference/setup.md` | SDK, AVDs, Maestro, Android CLI, mobilecli, a "before" build in a worktree |
+| `reference/setup.md` | SDK, AVDs, Maestro, Android CLI, mobilecli, the live check after install, a "before" build in a worktree |
 | `reference/adb.md` | raw adb for what `adbm` does not do |
 
 ## Leave the device as you found it

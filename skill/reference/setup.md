@@ -49,6 +49,28 @@ adbm setup --maestro --android-cli --yes
   `hw.keyboard=yes` keeps the on-screen keyboard out of frames.
 - **A running AVD** is skipped by `--tune`: the config is read only at boot.
 
+## Check that it works
+
+`doctor` checks the tools; this checks that the agent can drive a device. Run it after the first
+install and after `setup`. It uses the system Settings app and resource ids, so the device language
+does not matter.
+
+```bash
+adbm devices --start 33 --headless                 # any API level that has an AVD; skip for a running device
+adbm launch com.android.settings --api 33
+adbm wait settings_homepage_container --api 33     # the UI tree is readable
+adbm tap search_action_bar --api 33                # a tap changes the screen
+adbm key back --api 33 && adbm key back --api 33   # the first back closes the keyboard
+adbm wait settings_homepage_container --api 33
+adbm look --api 33 --small                         # a frame: open the PNG with Read and look at it
+adbm devices --stop 33                             # only if you booted it here
+```
+
+Every command must end with exit code 0. If `wait` prints `uiautomator dump failed: cat: /sdcard/…:
+No such file or directory`, the emulator has not mounted its shared storage (seen on an API 35 AVD).
+Stop it and boot it again; if it repeats, wipe the AVD data in Android Studio → Device Manager, or
+use another API level.
+
 ## Android CLI
 
 A closed-source Google binary with a JVM inside. Telemetry is on by default.

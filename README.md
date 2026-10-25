@@ -104,6 +104,8 @@ The skill is then called `adbm:adbm`, the agent `adbm:adbm-eyes`.
 ```
 
 Then install Pillow (see below) and run `adbm doctor` through the agent: ask it to check the environment.
+Then ask it to run the live check from [skill/reference/setup.md](skill/reference/setup.md#check-that-it-works):
+it boots an emulator, reads the screen, taps and takes a frame.
 The plugin does not put `adbm` on the terminal's PATH; for terminal use, clone the repository as below.
 To get a new version: `/plugin marketplace update sp-tools`, then `claude plugin update adbm@sp-tools` (in the shell).
 
@@ -117,6 +119,8 @@ python3 -m pip install Pillow   # Homebrew Python: brew install pillow; Debian/U
 ~/dev/adbm/skill/bin/adbm setup --hook --agent --yes   # guard hook + adbm-eyes agent
 ~/dev/adbm/skill/bin/adbm doctor
 ```
+
+Then the live check: [skill/reference/setup.md](skill/reference/setup.md#check-that-it-works).
 
 `setup --hook` changes `~/.claude/settings.json`: the hook denies the agent reading full-size frames in every
 project. What exactly it changes and how to add the hook by hand is in [docs/configuration.md](docs/configuration.md).

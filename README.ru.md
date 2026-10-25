@@ -105,6 +105,8 @@ Skill тогда называется `adbm:adbm`, агент — `adbm:adbm-eye
 ```
 
 Затем поставь Pillow (см. ниже) и попроси агента проверить окружение: он запустит `adbm doctor`.
+Затем попроси его сделать живую проверку из [skill/reference/setup.md](skill/reference/setup.md#check-that-it-works):
+агент поднимет эмулятор, прочитает экран, нажмёт на элемент и снимет кадр.
 Плагин не добавляет `adbm` в PATH терминала. Чтобы работать из терминала, клонируй репозиторий, как ниже.
 Новая версия: `/plugin marketplace update sp-tools`, затем `claude plugin update adbm@sp-tools` (в терминале).
 
@@ -118,6 +120,8 @@ python3 -m pip install Pillow   # Python из Homebrew: brew install pillow; Deb
 ~/dev/adbm/skill/bin/adbm setup --hook --agent --yes   # хук-ограждение и агент adbm-eyes
 ~/dev/adbm/skill/bin/adbm doctor
 ```
+
+Затем живая проверка: [skill/reference/setup.md](skill/reference/setup.md#check-that-it-works).
 
 `setup --hook` меняет `~/.claude/settings.json`: хук запрещает агенту читать полноразмерные кадры во всех
 проектах. Что именно он меняет и как поставить хук руками — в [docs/configuration.ru.md](docs/configuration.ru.md).
