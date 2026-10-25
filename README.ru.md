@@ -100,13 +100,13 @@ ADBM не заменяет эти инструменты, а собирает и
 Skill тогда называется `adbm:adbm`, агент — `adbm:adbm-eyes`.
 
 ```
-/plugin marketplace add StasPotapov/adbm
-/plugin install adbm@adbm
+/plugin marketplace add StasPotapov/sp-tools
+/plugin install adbm@sp-tools
 ```
 
 Затем поставь Pillow (см. ниже) и попроси агента проверить окружение: он запустит `adbm doctor`.
 Плагин не добавляет `adbm` в PATH терминала. Чтобы работать из терминала, клонируй репозиторий, как ниже.
-Новая версия: `/plugin marketplace update adbm`, затем `/plugin update adbm@adbm`.
+Новая версия: `/plugin marketplace update sp-tools`, затем `/plugin update adbm@sp-tools`.
 
 **Из клона.** Skill — симлинк, хук и агента добавляет `adbm setup`:
 

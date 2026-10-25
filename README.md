@@ -99,13 +99,13 @@ There are two ways to install. Pick one: with both, the skill and the hook load 
 The skill is then called `adbm:adbm`, the agent `adbm:adbm-eyes`.
 
 ```
-/plugin marketplace add StasPotapov/adbm
-/plugin install adbm@adbm
+/plugin marketplace add StasPotapov/sp-tools
+/plugin install adbm@sp-tools
 ```
 
 Then install Pillow (see below) and run `adbm doctor` through the agent: ask it to check the environment.
 The plugin does not put `adbm` on the terminal's PATH; for terminal use, clone the repository as below.
-To get a new version: `/plugin marketplace update adbm`, then `/plugin update adbm@adbm`.
+To get a new version: `/plugin marketplace update sp-tools`, then `/plugin update adbm@sp-tools`.
 
 **From a clone.** The skill is a symlink, the hook and the agent are added by `adbm setup`:
 
