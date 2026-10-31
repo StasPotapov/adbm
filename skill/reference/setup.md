@@ -11,11 +11,12 @@
 | ffmpeg | contact sheet in `adbm record` | macOS: `brew install ffmpeg`; Linux: `sudo apt install ffmpeg` |
 | Android CLI, optional | `adbm annotate` and `tap '#N'` on screens without a UI tree; the rest works without it | `adbm setup --android-cli --yes` (Homebrew cask `android-cli`; without Homebrew install it by hand) |
 | mobilecli, optional | `adbm clipboard`; `adbm type` pastes non-ASCII text through the clipboard (~2–3 s instead of ~8 s) | `adbm setup --mobilecli --yes` (`npm install -g mobilecli@latest`; without npm — install Node.js first) |
+| qrencode or Python qrcode[pil], optional | QR generation for `adbm pair` | macOS: `brew install qrencode`; Linux: `sudo apt install qrencode`; or install qrcode[pil] for the Python running adbm |
 | SDK licenses | `sdkmanager` downloads images only after they are accepted | the person runs `sdkmanager --licenses` and accepts them; `adbm setup` stops and says so |
 | Guard hook (Claude Code) | denies `Read` of full-size frames | `adbm setup --hook --yes`: appends to `~/.claude/settings.json`; a plugin install has it |
 | `adbm-eyes` agent (Claude Code) | the subagent with 5 tools, a small start context | `adbm setup --agent --yes`: a link in `~/.claude/agents/`; a plugin install has it |
 
-`adbm doctor` checks all of this and prints a fix command for every row.
+`adbm doctor` checks the base environment and prints fix commands. The optional QR generator is checked by `adbm pair` when used.
 Settings: `adbm config` shows the model and effort of `adbm-eyes` and the project's API levels.
 `--set devices.apis=28,33,35 --project` writes `.adbm/config.ini`, without `--project` — `~/.config/adbm/config.ini`;
 the project file wins. `--init` writes a file with all keys and comments; in the project file the keys
@@ -133,3 +134,6 @@ and keeps it for 30 minutes. The agent holds UiAutomation, so `uiautomator dump`
 On Android 13+ a clipboard change shows a "copied" overlay for ~10 s; `adbm` closes it: a dismiss button on API 34–35,
 a swipe on API 33 and on the minimized overlay of API 37.
 
+## Wireless phones
+
+See [connection.md](connection.md) for `adbm pair`, QR display, `adbm connect`, mDNS fallback and VPN/port diagnosis. No Android Studio is required.

@@ -61,3 +61,10 @@ index.html  manifest.js  00-summary.png
 `adbm` считает только свой вывод. Чтение файлов через `Read`, логи сборки и текст самого агента в него не входят.
 Целую сессию Claude Code считает `tools/measure-session.py <transcript.jsonl>`: символы вывода по командам
 и прочитанные картинки.
+
+## Телефон по Wi-Fi
+
+- `adbm pair [--ip IP] [--open] [--timeout 120]` — создать QR-код, дождаться сопряжения и подключения.
+- `adbm connect [--ip IP] [--port PORT] [--timeout 60]` — подключить сопряжённый телефон через кэш, mDNS или поиск порта одного IP.
+
+Требования и разбор ошибок — [connection.md](../skill/reference/connection.md).

@@ -36,6 +36,15 @@ project root: runs go to `<project>/build/adbm/<date>-<slug>/`. The project is t
 current folder; `ADBM_PROJECT=<path>` overrides it. Help: `"$ADBM" <command> -h`. Commands below
 omit the prefix: run `"$ADBM" <command>`, and set the variable in every Bash call (it does not persist).
 
+## Wireless phones
+
+Use `pair` to generate a QR and pair/connect without Android Studio; use `connect` for a previously
+paired phone. Read `reference/connection.md` before the first Wi-Fi pairing, a reconnect failure,
+or troubleshooting VPN/mDNS/ports. Start `pair` with an early tool yield and show its `qr:` image
+while the command waits. Only the phone QR scan requires the person. If mDNS is empty, use the
+actual Wi-Fi IP with `--ip`; the fallback searches only that phone, never a subnet. Confirm `connected:`
+and `devices` before installing. Do not silently change VPN/firewall or treat `paired:` as connected.
+
 ## Device control
 
 | The person asks | Run |
@@ -52,6 +61,8 @@ omit the prefix: run `"$ADBM" <command>`, and set the variable in every Bash cal
 | logs, crash | `log` (the app's process), `log --crash`, `log --grep <re>`; crash history with ANR and native, also before a reboot — `crashes [--app <pkg>]`, one crash — `crashes <id>` |
 | deep link, permission, file | `open <uri>`, `perm <pkg> grant CAMERA`, `push`, `pull` |
 | a screenshot | for you to see — `look` (~860 tokens); for the person — `shot <name>`, give the path, do not read it |
+| pair a phone over Wi-Fi with a QR | `pair --open`, or `pair --ip <Wi-Fi-IP>` when mDNS is unavailable; see `reference/connection.md` |
+| reconnect a paired Wi-Fi phone | `connect`, or `connect --ip <Wi-Fi-IP> [--port <debugging-port>]` |
 | which devices, boot an emulator | `devices`, `devices --start` (the project's API levels) or `--start 33,35`, `devices --stop 33` |
 | device theme, navigation mode, font scale, locale | `prep --theme dark`, `--nav gestural`, `--font-scale 1.3`, `--locale ru-RU --app <pkg>` |
 | put the device back after a check | `restore`: animations, demo mode, theme, navigation, font scale, rotation, app locales, fake GPS — as before adbm |
@@ -97,6 +108,7 @@ For "how does it look", screens on a board, several API levels, a theme or navig
 | `reference/troubleshooting.md` | `run` failed or hung, black or empty frames, device problems |
 | `reference/flows.md` | writing and fixing a Maestro flow |
 | `reference/api-matrix.md` | which API levels and axes to offer for a change |
+| `reference/connection.md` | QR pairing, Wi-Fi reconnect, mDNS/VPN/port diagnosis and required physical actions |
 | `reference/setup.md` | SDK, AVDs, Maestro, Android CLI, mobilecli, the live check after install, a "before" build in a worktree |
 | `reference/adb.md` | raw adb for what `adbm` does not do |
 

@@ -10,6 +10,9 @@ With more than one device connected, always write `adb -s <serial>`.
 
 ## Devices and server
 
+For Android 11+ Wireless debugging use `adbm pair` (QR) and `adbm connect`;
+read `reference/connection.md`. The port-5555 USB-first workflow below is legacy only.
+
 ```bash
 adb kill-server && adb start-server  # restart the server
 adb -s SERIAL tcpip 5555             # Wi-Fi: over USB first

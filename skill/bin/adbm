@@ -4137,6 +4137,18 @@ def cmd_status(a):
 
 # ---------------------------------------------------------------- argparse
 
+def cmd_wifi(a):
+    import importlib.util
+    path = os.path.join(HERE, "adbm_wifi.py")
+    spec = importlib.util.spec_from_file_location("adbm_wifi", path)
+    wifi = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(wifi)
+    try:
+        return getattr(wifi, a.cmd)(a, adb_bin(), CACHE)
+    except (wifi.WifiError, OSError, subprocess.TimeoutExpired) as error:
+        die(str(error))
+
+
 def build_parser():
     P = argparse.ArgumentParser(prog="adbm", description="Android Debug Bridge Matrix — visual checks of Android apps by an agent")
     P.add_argument("--version", action="version", version=VERSION)
@@ -4168,6 +4180,14 @@ def build_parser():
     p.add_argument("--start", metavar="APIS", nargs="?", const="", help="without a value: apis from the config")
     p.add_argument("--stop", metavar="APIS")
     p.add_argument("--headless", action="store_true")
+    p = add("pair", cmd_wifi, "generate a QR code, pair and connect an Android 11+ phone over Wi-Fi")
+    p.add_argument("--ip", help="phone Wi-Fi IPv4; enables single-host fallback when mDNS is unavailable")
+    p.add_argument("--timeout", type=float, default=120, help="total pairing and connection budget, seconds (default: 120)")
+    p.add_argument("--open", action="store_true", help="open the generated QR image in the system viewer")
+    p = add("connect", cmd_wifi, "reconnect a paired Wi-Fi phone using its saved address or --ip")
+    p.add_argument("--ip", help="phone Wi-Fi IPv4 (default: the last connected phone)")
+    p.add_argument("--port", type=int, help="debugging port, if known; not the pairing port")
+    p.add_argument("--timeout", type=float, default=60, help="total connection budget, seconds (default: 60)")
     p = add("prep", cmd_prep, "deterministic frames: animations off, demo mode, theme, navigation", "multi")
     p.add_argument("--theme", choices=("light", "dark"))
     p.add_argument("--nav", choices=("threebutton", "gestural"))

@@ -165,3 +165,9 @@ python3 -m unittest discover tests
 ## Лицензия
 
 MIT
+
+## Телефон по Wi-Fi без Android Studio
+
+`adbm pair --open` создаёт QR-код, ждёт сканирования, сопрягает и подключает телефон.
+Если mDNS не работает: `adbm pair --ip <Wi-Fi-IP-телефона> --open`. В следующий раз — `adbm connect`.
+Для QR нужен qrencode или Python qrcode[pil]. Настройка, VPN, порты и ошибки — в [инструкции подключения](skill/reference/connection.md).

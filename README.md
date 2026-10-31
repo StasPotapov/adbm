@@ -164,3 +164,9 @@ the guard hook and the session measurement on fixtures from a real run. Without 
 ## License
 
 MIT
+
+## Wi-Fi phones without Android Studio
+
+`adbm pair --open` generates a QR, waits for the phone, pairs and connects it.
+Use `adbm pair --ip <phone-Wi-Fi-IP> --open` when mDNS is unavailable, and `adbm connect` next time.
+QR generation needs qrencode or Python qrcode[pil]. See [connection instructions](skill/reference/connection.md) for setup and troubleshooting.

@@ -1,5 +1,12 @@
 # When something fails
 
+## Wi-Fi pairing or reconnect failed
+
+Read [connection.md](connection.md) before retrying. It covers a missing QR generator, empty mDNS,
+VPN/TUN addresses, separate pairing/debugging ports, Local Network permissions and single-phone
+TCP discovery. Use `adbm pair --ip <Wi-Fi-IP>` or `adbm connect`; do not scan a subnet or disable
+network protections automatically. A `paired:` result still needs `connected:` and `adbm devices`.
+
 ## A cell of `adbm run` failed
 
 The line has the reason from Maestro and the path to the log. Next to it:

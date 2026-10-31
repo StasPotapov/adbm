@@ -61,3 +61,10 @@ or by `gradle clean` (it deletes `build/`) are no longer counted. `--json` print
 `adbm` counts only its own output. `Read` of files, build logs and the agent's own text are not in it:
 `tools/measure-session.py <transcript.jsonl>` counts a whole Claude Code session — characters of output
 per command and images read.
+
+## Wireless phones
+
+- `adbm pair [--ip IP] [--open] [--timeout 120]` — generate a QR and wait for secure pairing and connection.
+- `adbm connect [--ip IP] [--port PORT] [--timeout 60]` — reconnect the paired phone; cache, mDNS and single-host TCP discovery.
+
+See [connection.md](../skill/reference/connection.md) for prerequisites and troubleshooting.
