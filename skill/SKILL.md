@@ -1,16 +1,14 @@
 ---
 name: adbm
-description: "Drives an Android device or emulator for the agent instead of raw adb, with deterministic commands instead of guessing from screenshots: reads the screen as compact text, taps by text and checks the next screen, types (Cyrillic too), swipes, presses keys, runs several actions in one call, installs, launches and stops apps, reads logcat and the crash history (ANR, native, before a reboot), opens deep links, grants permissions, fakes the GPS location, reads and writes the clipboard, copies files, takes screenshots. On top of that it checks how the app looks: boots emulators for the needed API levels, runs Maestro flows on them in parallel with a theme and navigation matrix, shows the screens on an HTML board, compares \"before\" and \"after\" builds when a change needs checking, and a subagent writes the verdict. - Any adb or device task: \"launch the app on the emulator\", \"what is on the screen\", \"tap Settings\", \"install the APK\", \"show the crash log\", \"why did it crash yesterday\", \"grant the permission\", \"open the deep link\", \"set the location to Moscow\", \"what is in the clipboard\", \"fill in the form\", \"take a screenshot\". Checks: \"check it on the emulator\", \"show me the screens\", \"before/after screenshots\", \"how it looks on API 28/33/35\", \"run the flow in dark theme\", \"check the insets / bottom sheet change\"."
-argument-hint: "<what to do or check> [--api 28,33,35]"
-allowed-tools:
-  - Bash
-  - Read
-  - Write
-  - Edit
-  - Glob
-  - Grep
-  - Agent
+description: >-
+  Drive Android phones and emulators with the adbm CLI. Use for adb or Android device tasks:
+  connect by USB or Wi-Fi, pair by QR, read screens as text, tap, type, swipe, install and launch apps,
+  open deep links, grant permissions, read logs or crashes, change mock GPS, use the clipboard, copy files
+  and take screenshots. Use for Android visual checks: run Maestro flows across API levels, themes and
+  navigation modes, compare before and after builds, and show frames on an HTML board.
 ---
+
+Read [HOST.md](HOST.md) before running tools. It explains how to find the CLI and use this skill in your client.
 
 # ADBM — Android Debug Bridge Matrix
 
@@ -30,11 +28,10 @@ It has two layers:
 Start with device control. Go to "Visual check" (`reference/visual-check.md`) when the person wants to see
 screens on a board, several API levels, a theme and navigation matrix, or what a change did.
 
-The CLI is `bin/adbm` of this skill: `ADBM="${CLAUDE_SKILL_DIR}/bin/adbm"`. If the variable is not
-substituted, take the folder from the "Base directory for this skill" line. Run commands from the
+The CLI is `bin/adbm` next to this skill: set `ADBM="<absolute-skill-directory>/bin/adbm"` using the directory of the loaded `SKILL.md`. Run commands from the
 project root: runs go to `<project>/build/adbm/<date>-<slug>/`. The project is the git root of the
 current folder; `ADBM_PROJECT=<path>` overrides it. Help: `"$ADBM" <command> -h`. Commands below
-omit the prefix: run `"$ADBM" <command>`, and set the variable in every Bash call (it does not persist).
+omit the prefix: run `"$ADBM" <command>`, and set the variable again in each separate shell call.
 
 ## Wireless phones
 
@@ -70,9 +67,10 @@ and `devices` before installing. Do not silently change VPN/firewall or treat `p
 | screens on a page for the person, how it looks on API 33/35, themes | `reference/visual-check.md`, "Screens" |
 | what a change did: a fix, a bug, before/after | `reference/visual-check.md`, "Before/after" |
 
-A single action needs no `doctor`, `new`, `diff` or `board`. Only `new` and `run` start a run; outside one
+On first use, run `"$ADBM" --version`, `"$ADBM" doctor` and `"$ADBM" devices`.
+For routine device actions, skip `doctor`, `new`, `diff` and `board`. Only `new` and `run` start a run; outside one
 `adbm` writes to `~/.cache/adbm/`, and `shot`/`record` frames there are unseen by `diff` and `board`.
-`doctor` only if something does not start. Address devices by `--api N`, a physical device by `--serial`.
+`doctor` only if something does not start. Address devices by `--api N`, a physical device by `--serial <serial from devices>`.
 
 ## Commands, not pictures
 
@@ -89,8 +87,8 @@ A command answers in a few lines; a 1080×2400 image costs ~3350 tokens, a line 
    ~1850). Screen coordinate = image coordinate / `scale` from the output. Over 3 `look` per task — stop.
 4. **Logs:** read only on failure and only the part you need (`tail`, `grep`).
 
-`adbm status` estimates what `adbm` put into the context and what it saved, per run of the project; `status <run>` — one run. If the guard hook is installed (plugin, or
-`settings.json` per `docs/configuration.md`), it denies `Read` of a frame or a raw XML dump: do what the denial says.
+`adbm status` estimates what `adbm` put into the context and what it saved, per run of the project; `status <run>` — one run. The optional Claude Code guard hook denies `Read` of full-size frames and raw XML dumps.
+The same image budget applies on clients without a hook.
 
 ## Visual check
 
@@ -129,7 +127,7 @@ Details are in `<command> -h`.
   In a flow write `inputText` as usual.
 - **mobilecli** (`clipboard`, fast non-Latin `type`): its on-device agent blocks `uiautomator dump`; `adbm` stops it
   after every call. `ui` fails after mobilecli ran from elsewhere — `reference/troubleshooting.md`.
-- **`location`** on API 31+: apps see it as mock; it stays until `location clear` or a reboot — run `clear`
+- **`location`** on API 31+: apps see it as mock; it stays until `location clear` or a reboot — run `location clear`
   when the check is over. A phone below API 31 is not supported.
 - A physical device is picked only when no emulator has that API level: address it with `--serial`.
 - **`FLAG_SECURE`** (banks, password managers): empty or black frames — `reference/troubleshooting.md`.

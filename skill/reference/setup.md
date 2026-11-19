@@ -4,9 +4,11 @@
 
 | What | Why | How to install |
 |---|---|---|
-| Android SDK: `platform-tools`, `emulator`, `cmdline-tools` | adb, emulators, `sdkmanager` and `avdmanager` | Android Studio → SDK Manager → SDK Tools |
+| Android SDK Platform-Tools | `adb` for a phone or emulator | Android Studio → SDK Manager → SDK Tools, or [Platform-Tools download](https://developer.android.com/tools/releases/platform-tools) for a phone without Studio |
+| Android Emulator and Command-line Tools | create and boot AVDs, download system images | Android Studio → SDK Manager → SDK Tools |
 | Java 17+ | Maestro, `sdkmanager`, Gradle | macOS: `brew install openjdk@17`; Linux: `sudo apt install openjdk-17-jdk` |
-| Python 3.9+ and Pillow | `adbm` itself: contact sheet, diff, `look` | `python3 -m pip install Pillow`; Homebrew Python: `brew install pillow`; Debian/Ubuntu: `sudo apt install python3-pil` |
+| Python 3.9+ | `adbm` CLI | use a supported `python3` on PATH |
+| Pillow | contact sheets, `diff`, `look` | Homebrew: `brew install pillow`; Debian/Ubuntu: `sudo apt install python3-pil`; or `python3 -m pip install Pillow` in a virtual environment on PATH |
 | Maestro | `adbm run`, `adbm type` with non-ASCII text when mobilecli is missing | `adbm setup --maestro --yes` (Homebrew `mobile-dev-inc/tap/maestro`, without Homebrew the official `get.maestro.mobile.dev` script) |
 | ffmpeg | contact sheet in `adbm record` | macOS: `brew install ffmpeg`; Linux: `sudo apt install ffmpeg` |
 | Android CLI, optional | `adbm annotate` and `tap '#N'` on screens without a UI tree; the rest works without it | `adbm setup --android-cli --yes` (Homebrew cask `android-cli`; without Homebrew install it by hand) |
@@ -14,10 +16,15 @@
 | qrencode or Python qrcode[pil], optional | QR generation for `adbm pair` | macOS: `brew install qrencode`; Linux: `sudo apt install qrencode`; or install qrcode[pil] for the Python running adbm |
 | SDK licenses | `sdkmanager` downloads images only after they are accepted | the person runs `sdkmanager --licenses` and accepts them; `adbm setup` stops and says so |
 | Guard hook (Claude Code) | denies `Read` of full-size frames | `adbm setup --hook --yes`: appends to `~/.claude/settings.json`; a plugin install has it |
-| `adbm-eyes` agent (Claude Code) | the subagent with 5 tools, a small start context | `adbm setup --agent --yes`: a link in `~/.claude/agents/`; a plugin install has it |
+| `adbm-eyes`, optional | independent visual verdict | [launch the shared prompt in your client](visual-check.md#the-adbm-eyes-subagent); the Claude Code plugin also installs it as a native agent |
 
 `adbm doctor` checks the base environment and prints fix commands. The optional QR generator is checked by `adbm pair` when used.
-Settings: `adbm config` shows the model and effort of `adbm-eyes` and the project's API levels.
+The hook and installed agent rows in `doctor` refer to Claude Code. They are not required for Codex,
+other clients or terminal use. If you installed only Platform-Tools, put its directory on PATH so ADBM can find `adb`.
+With a phone-only setup, `doctor` can report missing emulator and visual tools and exit with code 1.
+If the `adb` row is OK, continue with `adbm devices` and `adbm ui --serial <serial>`.
+For a nonstandard full SDK location set `ANDROID_HOME` to the SDK directory.
+Settings: `adbm config` shows the Claude Code model and effort of `adbm-eyes` and the project's API levels.
 `--set devices.apis=28,33,35 --project` writes `.adbm/config.ini`, without `--project` — `~/.config/adbm/config.ini`;
 the project file wins. `--init` writes a file with all keys and comments; in the project file the keys
 are commented out, so it overrides nothing until you set a value.
@@ -52,18 +59,20 @@ adbm setup --maestro --android-cli --yes
 
 ## Check that it works
 
-`doctor` checks the tools; this checks that the agent can drive a device. Run it after the first
-install and after `setup`. It uses the system Settings app and resource ids, so the device language
-does not matter.
+`doctor` checks the tools. The example below checks that the agent can drive an API 33 emulator.
+Run it after the first install and after `setup`. If you have no API 33 AVD, create one in
+Android Studio's Device Manager, or review `adbm setup --api 33` and run it with `--yes` to apply.
+Use the CLI path from your installation in place of `adbm` if it is not on PATH.
+The example uses the system Settings app and resource IDs so the device language does not matter.
 
 ```bash
-adbm devices --start 33 --headless                 # any API level that has an AVD; skip for a running device
+adbm devices --start 33 --headless                 # skip if the API 33 emulator is already running
 adbm launch com.android.settings --api 33
 adbm wait settings_homepage_container --api 33     # the UI tree is readable
 adbm tap search_action_bar --api 33                # a tap changes the screen
 adbm key back --api 33 && adbm key back --api 33   # the first back closes the keyboard
 adbm wait settings_homepage_container --api 33
-adbm look --api 33 --small                         # a frame: open the PNG with Read and look at it
+adbm look --api 33 --small                         # open the printed PNG with your client's image viewer
 adbm devices --stop 33                             # only if you booted it here
 ```
 

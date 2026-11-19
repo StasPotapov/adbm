@@ -13,7 +13,7 @@ Commands omit the prefix, as in `SKILL.md`: run `"$ADBM" <command>`.
 ## Steps
 
 1. **Environment.** `doctor`; rows that block the task — show the fix and ask; `setup` without `--yes` only plans.
-   `setup --hook` / `--agent` change the person's Claude Code settings: run them with `--yes` only after a clear yes.
+   `setup --hook` and `setup --agent` are optional Claude Code integrations. They are not needed on other clients.
 2. **API levels.** The person named the levels — use them with `--api`, do not ask again and do not write
    the config; a change that needs another level (insets, theme, permissions) — mention it once.
    Otherwise `config` shows the project's set: `devices  apis=…`; commands without `--api` use it.
@@ -44,14 +44,19 @@ last `install` (the run's `.as` file); with no install — `after`.
 
 ## The adbm-eyes subagent
 
-Use the agent type `adbm-eyes` (`adbm:adbm-eyes` when ADBM is a plugin) if the Agent tool lists it.
-Otherwise: Agent with `subagent_type: general-purpose` and as the prompt the content
-of `agents/adbm-eyes.md` of this skill without frontmatter.
+Use the shared [adbm-eyes prompt](../agents/adbm-eyes.md). Give the subagent image access and write
+access to the run folder. Use the current client's agent API and wait for the result.
 
-In both cases model and effort come from the person's settings: run `adbm config` and take
-the `adbm-eyes` line. Pass its `model` and `effort` to the Agent tool, a value marked `(default)` too;
-do not pass a value shown as `-`.
-The person sets them in `~/.config/adbm/config.ini` or the project's `.adbm/config.ini`.
+- **Codex:** Pass the prompt body and the fields below to a fresh native subagent. The prompt's
+  Claude frontmatter does not select a Codex model. Where `collaboration.spawn_agent` is available,
+  use `fork_turns="none"`. Use the user's requested model, or `gpt-6.1-sol` with
+  `reasoning_effort="low"` if the client offers them. Otherwise use a supported image-capable agent.
+  The Claude aliases shown by `adbm config` do not apply.
+- **Claude Code:** Use the native agent `adbm:adbm-eyes` from the plugin or `adbm-eyes` from a manual
+  install. If neither is listed, pass the prompt body to a fresh general-purpose agent. Read
+  `adbm config` and pass its configured model and effort where the Agent tool supports those options.
+- **Other clients:** Pass the prompt body and fields below to the client's own subagent with image access.
+  Without a suitable subagent, still generate and share the board; report that there is no independent verdict.
 
 Append to the prompt:
 

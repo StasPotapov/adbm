@@ -2,8 +2,10 @@
 
 [English](README.md)
 
-[Claude Code](https://code.claude.com/docs/en/overview) [skill](https://code.claude.com/docs/en/skills) и CLI `adbm`: агент работает с Android-устройством и [эмуляторами](https://developer.android.com/studio/run/emulator) через [adb](https://developer.android.com/tools/adb)
-детерминированными командами. Агент вызывает команды `adbm` вместо сырого `adb` и не угадывает по скриншоту, куда нажать.
+ADBM — скилл для AI-агентов и CLI для Android. [Codex](https://developers.openai.com/codex/skills) и
+[Claude Code](https://code.claude.com/docs/en/skills) используют один скилл. Другие агенты могут использовать
+его инструкции и вызывать CLI. Команды читают экран, нажимают на элементы и проверяют результат через
+[adb](https://developer.android.com/tools/adb) на телефоне или [эмуляторе](https://developer.android.com/studio/run/emulator).
 
 ## Зачем
 
@@ -34,10 +36,10 @@
 - **Скриншоты и видео.** Агент снимает кадры в папку прогона, берёт уменьшенный кадр или фрагмент, пишет видео.
   `adbm board` выкладывает кадры на HTML-страницу: экраны одной сборки, чтобы посмотреть, без сравнения.
 - **Проверка изменений.** Когда нужно проверить правку — исправление, баг, — агент ставит сборки «до» и «после» и считает пиксельный дифф.
-  Затем `adbm` собирает HTML-борд и PNG-коллаж «до | после», а [субагент](https://code.claude.com/docs/en/sub-agents) пишет вердикт.
+  Затем `adbm` собирает HTML-борд и PNG-коллаж «до | после», а [субагент](skill/reference/visual-check.md#the-adbm-eyes-subagent) пишет вердикт.
 
 Всё, что можно посчитать, считает `adbm`. Модель смотрит на картинку, только когда без неё никак.
-Поэтому картинки в контекст агента не идут, а кадр 1080×2400 стоит модели ~3350 токенов:
+Основной агент пропускает полноразмерные кадры. Кадр 1080×2400 стоит модели около 3350 токенов:
 
 - **по экрану агент ходит по тексту** — `adbm ui` сжимает дерево UI в 10–20 раз, `adbm tap "Закрыть"`;
 - **«изменилось ли» считает Python** — `adbm diff` даёт процент и область, для кадров из `adbm shot` — ещё и сдвиги элементов;
@@ -88,44 +90,78 @@ ADBM не заменяет эти инструменты, а собирает и
 | [Android CLI](https://developer.android.com/tools/agents/android-cli), необязательный | закрытый бинарник Google, лицензия не опубликована; собирает данные об использовании, `adbm` выключает это флагом `--no-metrics` | нужен для экранов без дерева UI: игры, Canvas, WebView без доступности. `adbm annotate` рисует на кадре номера найденных элементов, `adbm tap '#7'` нажимает по номеру. Без Android CLI всё остальное работает, а на таком экране агент нажимает по координатам с кадра `adbm look`. Если агент встретит такой экран, он сам предложит поставить Android CLI и поставит только после твоего согласия: `adbm setup --android-cli --yes` |
 | [mobilecli](https://github.com/mobile-next/mobilecli) от Mobile Next, необязательный | [FSL-1.1-ALv2](https://github.com/mobile-next/mobilecli/blob/main/LICENSE): исходники открыты, но это не OSI-лицензия — она запрещает конкурирующий коммерческий продукт на его коде; каждый выпуск через два года переходит на Apache 2.0. `adbm` его не поставляет, а вызывает установленную тобой копию. Телеметрии в его коде не нашлось (проверено 23.10.2026, версия 1.0.21) | буфер обмена устройства: `adbm clipboard` читает и пишет его, `adbm type` вставляет через него не-ASCII текст: 2–3 с на эмуляторе и ~6 с на телефоне по Wi-Fi против ~8 с и ~17 с через Maestro. Без mobilecli всё остальное работает. Ставится только после твоего согласия: `adbm setup --mobilecli --yes` (npm) |
 
-## Установка
+## Установка и первый запуск
 
-Нужны Android SDK, Python 3.9+ с Pillow, для сценариев — [Maestro](https://github.com/mobile-dev-inc/Maestro), он же для ввода не-ASCII через `adbm type`, если нет mobilecli; для видео — ffmpeg.
+Для первых команд нужны Python 3.9+, Android SDK Platform-Tools и работающий эмулятор или телефон
+с отладкой USB. Для `look` и сравнения кадров нужен Pillow. Для сценариев нужен Maestro.
+[Настройка SDK и эмулятора](skill/reference/setup.md#requirements) · [Телефон по Wi-Fi](skill/reference/connection.md).
 
-Платформы: macOS проверена. Linux должен работать: эмулятору нужен `/dev/kvm`. Windows не поддерживается, WSL не проверялся.
+Мы проверили macOS. Для эмулятора на Linux нужен `/dev/kvm`. Windows не поддерживается. WSL не проверяли.
 
-Есть два способа установки. Выбери один: с обоими skill и хук загрузятся дважды.
+### Codex
 
-**Плагином Claude Code.** Одна команда ставит skill, агента `adbm-eyes` и хук-ограждение.
-Skill тогда называется `adbm:adbm`, агент — `adbm:adbm-eyes`.
+В терминале:
 
+```bash
+git clone https://github.com/StasPotapov/adbm.git "$HOME/adbm"
+mkdir -p "$HOME/.agents/skills"
+adbm_skill="$HOME/.agents/skills/adbm"
+[ -e "$adbm_skill" ] || [ -L "$adbm_skill" ] || ln -s "$HOME/adbm/skill" "$adbm_skill"
 ```
+
+Если скилл уже установлен, проверь, куда ведёт ссылка, прежде чем менять её.
+Открой проект Android в новой сессии Codex и напиши: «Используй $adbm. Проверь окружение,
+покажи подключённые устройства и прочитай экран эмулятора». Хук Claude Code для этого не нужен.
+
+### Claude Code
+
+В Claude Code:
+
+```text
 /plugin marketplace add StasPotapov/sp-tools
 /plugin install adbm@sp-tools
 ```
 
-Затем поставь Pillow (см. ниже) и попроси агента проверить окружение: он запустит `adbm doctor`.
-Затем попроси его сделать живую проверку из [skill/reference/setup.md](skill/reference/setup.md#check-that-it-works):
-агент поднимет эмулятор, прочитает экран, нажмёт на элемент и снимет кадр.
-Плагин не добавляет `adbm` в PATH терминала. Чтобы работать из терминала, клонируй репозиторий, как ниже.
-Новая версия: `/plugin marketplace update sp-tools`, затем `claude plugin update adbm@sp-tools` (в терминале).
-
-**Из клона.** Skill — симлинк, хук и агента добавляет `adbm setup`:
+Попроси Claude Code: «Используй /adbm:adbm. Проверь окружение, покажи подключённые устройства и прочитай экран эмулятора».
+Плагин добавляет скилл, агента `adbm:adbm-eyes` и хук Claude Code. Он не добавляет CLI в `PATH`.
+Для обновления выполни `/plugin marketplace update sp-tools`, затем `claude plugin update adbm@sp-tools` в терминале.
+Каталог может отставать от репозитория. Например, в плагине v0.3.2 нет подключения по Wi-Fi.
+Чтобы взять ту же версию, что и для Codex, клонируй репозиторий как выше и добавь ссылку вместо плагина:
 
 ```bash
-git clone https://github.com/StasPotapov/adbm.git ~/dev/adbm
-mkdir -p ~/.claude/skills
-ln -s ~/dev/adbm/skill ~/.claude/skills/adbm
-python3 -m pip install Pillow   # Python из Homebrew: brew install pillow; Debian/Ubuntu: sudo apt install python3-pil
-~/dev/adbm/skill/bin/adbm setup --hook --agent --yes   # хук-ограждение и агент adbm-eyes
-~/dev/adbm/skill/bin/adbm doctor
+mkdir -p "$HOME/.claude/skills"
+adbm_skill="$HOME/.claude/skills/adbm"
+[ -e "$adbm_skill" ] || [ -L "$adbm_skill" ] || ln -s "$HOME/adbm/skill" "$adbm_skill"
 ```
 
-Затем живая проверка: [skill/reference/setup.md](skill/reference/setup.md#check-that-it-works).
+В новой сессии вызови `/adbm`. Выбери один способ установки для Claude Code.
+[Ручная установка хука и агента](docs/configuration.ru.md#хук-ограждение) нужна только при желании их подключить.
 
-`setup --hook` меняет `~/.claude/settings.json`: хук запрещает агенту читать полноразмерные кадры во всех
-проектах. Что именно он меняет и как поставить хук руками — в [docs/configuration.ru.md](docs/configuration.ru.md).
-CLI работает и без Claude Code: `ln -s ~/dev/adbm/skill/bin/adbm /usr/local/bin/adbm`.
+### Другие агенты и терминал
+
+Возьми весь каталог [`skill/`](skill/): внутри инструкции, CLI и ресурсы. Укажи агенту путь к
+`SKILL.md` или добавь каталог в путь поиска скиллов. Для работы нужны доступ к локальному терминалу,
+файлам и Android SDK. Для независимого вердикта нужны субагент и просмотр изображений.
+[Как запустить субагента](skill/reference/visual-check.md#the-adbm-eyes-subagent).
+
+Из терминала, в каталоге своего Android-проекта (если клон ADBM лежит в `$HOME/adbm`):
+
+```bash
+ADBM="$HOME/adbm/skill/bin/adbm"
+"$ADBM" --version
+"$ADBM" doctor
+"$ADBM" devices
+"$ADBM" ui                       # один подключённый эмулятор
+# "$ADBM" ui --serial SERIAL     # для телефона или выбора конкретного устройства
+```
+
+Если работаешь только с телефоном, `doctor` может сообщить об отсутствии эмулятора и инструментов для кадров.
+Если `adb` найден, продолжи с `devices` и `ui --serial SERIAL`.
+Нет устройств? Запусти готовый эмулятор в Android Studio или через `"$ADBM" devices --start 33`
+(если создан AVD с API 33). Для кадров поставь Pillow в тот Python, который запускает ADBM:
+на Homebrew — `brew install pillow`, на Debian/Ubuntu — `sudo apt install python3-pil`,
+для другого Python — `python3 -m pip install Pillow` в подходящем окружении.
+[Проверка на системных настройках Android](skill/reference/setup.md#check-that-it-works) не требует APK проекта.
 
 ## Частые команды
 

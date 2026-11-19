@@ -74,6 +74,6 @@ Other tools have each part separately. We found no tool with the whole combinati
 ## Where ADBM is weaker
 
 - Android only. mobile-mcp and Maestro work with iOS too.
-- The subagent and the hook work only in Claude Code. Maestro MCP and Android CLI fit any agent.
+- A visual verdict needs a subagent with image access. The bundled hook is for Claude Code.
 - No CI mode and no device cloud, only local emulators.
 - Tested on macOS and on a small number of apps.

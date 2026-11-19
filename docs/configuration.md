@@ -29,9 +29,9 @@ image = google_apis             # image variant for new AVDs; not set — any ph
 profile = pixel_8               # profile of new AVDs, see avdmanager list device
 ```
 
-Commands without `--api` use the `apis` list. They need all its emulators running: boot them with
-`adbm devices --start`. If a level is missing, the command stops and says what to start. A list for
-all projects can go to `~/.config/adbm/config.ini`: an empty `apis` in the project does not override it.
+Multi-device commands use `apis` if you pass neither `--api` nor `--serial`. Start the configured
+emulators with `adbm devices --start`. A single-device command picks one running device or asks you
+to choose. A list for all projects can go to `~/.config/adbm/config.ini`; an empty project value does not override it.
 
 On the first check in a project `apis` is empty. The agent reads the app's `minSdk`, offers levels
 with reasons and waits for the answer. Then it writes the answer: `adbm config --set devices.apis=28,33,35 --project`.
@@ -59,20 +59,16 @@ pairs, the area and the changed percent without a model, and compares the status
 explains the result: it writes what exactly broke and marks the pairs with a problem. If the model is wrong,
 the changed pair still stays on the board, and a person sees it.
 
-Haiku 5.5 handles this. On the run from [example.md](example.md) it gave the same verdict as `sonnet`:
-6 PROBLEM and 2 EXPECTED. Haiku 5.5 input costs $0.10 per 1M tokens, Sonnet 5.5 input costs $2.
-Effort `high` did not help on this run: the subagent spent more tokens and missed the light navigation bar.
+On the [example run](example.md), `haiku` and `sonnet` gave the same verdict: 6 PROBLEM and 2 EXPECTED.
+At `high` effort, the subagent spent more tokens and missed the light navigation bar.
 
-Before it starts the subagent, the skill runs `adbm config` and passes `model` and `effort` to the Agent tool.
-If the `adbm-eyes` type is not installed, the skill starts `general-purpose`, and an empty `model` there means
-the main session's model.
-
-The model setting works only in Claude Code. If you use another tool (Codex and others), adapt
-the "The adbm-eyes subagent" section of `skill/reference/visual-check.md` and `skill/agents/adbm-eyes.md` to it.
+These model and effort settings apply to Claude Code. The skill passes them when the Agent tool
+supports those parameters. Codex and other clients use their own subagent APIs and models.
+See [the launch instructions](../skill/reference/visual-check.md#the-adbm-eyes-subagent).
 
 ## Guard hook
 
-The [hook](https://code.claude.com/docs/en/hooks) `skill/hooks/adbm-guard.py` denies `Read` of a full-size frame or a raw UI dump, so an agent cannot
+The [Claude Code hook](https://code.claude.com/docs/en/hooks) `skill/hooks/adbm-guard.py` denies `Read` of a full-size frame or a raw UI dump, so an agent cannot
 spend ~3350 tokens on one screenshot by accident.
 
 - **A plugin install** registers the hook itself (`skill/hooks/hooks.json`).
@@ -95,5 +91,5 @@ The hook changes Claude Code for every project, so it runs only with `--yes` aft
 
 `adbm setup --agent --yes` links `~/.claude/agents/adbm-eyes.md` to `skill/agents/adbm-eyes.md`.
 A regular file in its place is copied to `adbm-eyes.md.adbm-backup`. A plugin install has the agent already.
-Without the agent everything works: the skill starts `general-purpose` with the same prompt, but that
-subagent has more tools and a bigger start context.
+Without the installed agent, Claude Code can use `general-purpose` with the same prompt. Codex and
+other clients use the [shared prompt](../skill/agents/adbm-eyes.md) without this install.
