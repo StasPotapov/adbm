@@ -138,7 +138,7 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
   // one build only: screens to look at, not before/after pairs
   const solo = M.solo ?? !M.items.some((i) => i.before);
   const meta = [["API", M.apis.join(", ")], solo ? ["frames", M.items.length] : ["pairs", M.items.length]];
-  for (const [k, v] of Object.entries(M.builds || {})) meta.push([k, (v.package || "") + " · " + (v.apk || "").split("/").pop() + " · " + v.sha1]);
+  for (const [k, v] of Object.entries(M.builds || {})) meta.push([k, (v.package || "") + (v.side_by_side ? " (side by side, APK " + v.orig_package + ")" : "") + " · " + (v.apk || "").split("/").pop() + " · " + v.sha1]);
   const st = M.stats || {};
   if (st.frames != null) meta.push(["frames captured", st.frames]);
   meta.push(["images in main context", (st.context_images || 0) + (st.context_image_tokens ? " (~" + st.context_image_tokens + " tokens)" : "")]);

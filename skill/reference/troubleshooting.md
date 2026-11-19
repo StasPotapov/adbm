@@ -49,6 +49,18 @@ is uniformly black: a dark theme with any visible text passes. Turn the protecti
 by hand — find its switch with `adbm ui --find` in the app's security settings and `tap` it;
 in a flow — as the first steps (`flows.md`, "Screenshot protection"); or use a debug build without it.
 
+## `install --side-by-side` failed, or the copy does not start
+
+- `needs apktool` — `adbm setup --apktool --yes` with Homebrew, or [install apktool manually](https://apktool.org/docs/install).
+  For missing SDK tools or old `zipalign`, run `sdkmanager "build-tools;35.0.0"`.
+- `apktool b failed` — apktool cannot rebuild the resources of this APK; install the builds one after another.
+- `INSTALL_FAILED_CONFLICTING_PROVIDER` or `DUPLICATE_PERMISSION` — an authority or permission does not start
+  with the package, so `adbm` left it as it is. Install the builds one after another.
+- `INSTALL_FAILED_UPDATE_INCOMPATIBLE` — an older `<pkg>.before` with another signature is on the device.
+  Check the exact clone package and device. If its data can be deleted, uninstall that package explicitly, then retry.
+- The copy starts and crashes, or sign-in fails: the app checks its package or signature (Firebase,
+  Google sign-in, Play Integrity). `adbm crashes --as before` shows the crash. Install the builds one after another.
+
 ## Devices
 
 | Symptom | What to do |

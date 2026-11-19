@@ -37,6 +37,8 @@ The agent checks the app, and you only look at the result.
   `adbm board` puts the frames on an HTML page: screens of one build to look at, no comparison needed.
 - **Change checks.** When a change needs checking — a fix, a bug — the agent installs "before" and "after" builds and computes a pixel diff.
   Then `adbm` builds an HTML board and a "before | after" PNG contact sheet, and a [subagent](skill/reference/visual-check.md#the-adbm-eyes-subagent) writes the verdict.
+- **Two builds on one phone.** `adbm install before.apk --as before --side-by-side` keeps "before" next to "after":
+  the copy gets its own package and the name `<name> · before`, so you compare them by hand.
 
 Whatever can be computed, `adbm` computes. A model looks at a picture only when nothing else helps.
 The main agent skips full-size frames. A 1080×2400 image costs a model ~3350 tokens:
@@ -86,6 +88,7 @@ ADBM does not replace these tools: it builds deterministic commands for the agen
 | [Pillow](https://python-pillow.github.io) | MIT-CMU, open source | pixel diff, crops, contact sheet |
 | [FFmpeg](https://ffmpeg.org) | LGPL 2.1+, open source; a build with `--enable-gpl` is GPL 2+ | frames from video for `adbm record` |
 | [Android CLI](https://developer.android.com/tools/agents/android-cli), optional | a closed Google binary, no published license; collects usage data, `adbm` turns that off with `--no-metrics` | needed for screens without a UI tree: games, Canvas, WebView without accessibility. `adbm annotate` draws numbers of the found elements on a frame, `adbm tap '#7'` taps by number. Without Android CLI everything else works, and on such a screen the agent taps by coordinates from an `adbm look` frame. When the agent meets such a screen, it offers to install Android CLI and installs it only after you agree: `adbm setup --android-cli --yes` |
+| [Apktool](https://apktool.org), optional | Apache 2.0, open source | `adbm install --side-by-side`: unpacks the APK, so `adbm` changes the package and the name, and packs it back. It is installed only after you agree: `adbm setup --apktool --yes` (Homebrew) |
 | [mobilecli](https://github.com/mobile-next/mobilecli) by Mobile Next, optional | [FSL-1.1-ALv2](https://github.com/mobile-next/mobilecli/blob/main/LICENSE): the source is open, but it is not an OSI license — it forbids a competing commercial product built on its code; each release becomes Apache 2.0 two years later. `adbm` does not ship it, it calls the copy you installed. No telemetry found in its code (checked 23.10.2026, version 1.0.21) | the device clipboard: `adbm clipboard` reads and writes it, `adbm type` pastes non-ASCII text through it: 2–3 s on an emulator and ~6 s on a phone over Wi-Fi, against ~8 s and ~17 s through Maestro. Without mobilecli everything else works. It is installed only after you agree: `adbm setup --mobilecli --yes` (npm) |
 
 ## Install and try ADBM
@@ -116,15 +119,18 @@ list connected devices and read the emulator screen.” This does not need the C
 In Claude Code:
 
 ```text
-/plugin marketplace add StasPotapov/sp-tools
-/plugin install adbm@sp-tools
+/plugin marketplace add StasPotapov/adbm
+/plugin install adbm@adbm
 ```
 
+If you have a local checkout or an unpacked release, pass its directory to `marketplace add` instead.
 Ask Claude Code: “Use /adbm:adbm. Check the environment, list connected devices and read the emulator screen.”
 The plugin adds the skill, the `adbm:adbm-eyes` agent and a Claude Code hook. It does not add the CLI to your `PATH`.
-To update, run `/plugin marketplace update sp-tools`, then `claude plugin update adbm@sp-tools` in a terminal.
-The marketplace can lag behind the repository: its v0.3.2 plugin lacks Wi-Fi pairing.
-To use the same revision as Codex, clone the repository as above and link its skill instead of installing the plugin:
+To update, run `/plugin marketplace update adbm`, then `claude plugin update adbm@adbm` in a terminal.
+If you installed ADBM from another marketplace, uninstall that copy before installing `adbm@adbm`.
+If you set it up manually in Claude Code, remove the old ADBM skill and agent links and its
+[guard entry](docs/configuration.md#guard-hook) before switching to the plugin.
+To install the skill manually instead, clone the repository as above and link its skill:
 
 ```bash
 mkdir -p "$HOME/.claude/skills"

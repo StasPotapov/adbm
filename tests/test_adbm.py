@@ -13,6 +13,7 @@ import tempfile
 import types
 import unittest
 import warnings
+from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FIX = os.path.join(ROOT, "tests", "fixtures")
@@ -239,6 +240,18 @@ class BatchTest(unittest.TestCase):
         out = self.steps("tap -h")
         self.assertIn("help is not a step", out)
         self.assertNotIn("usage:", out)
+
+    def test_destructive_build_aliases_stay_guarded_in_batch(self):
+        build = {"before": {"package": "com.foo.app.before", "install_paths": {"emu-a": "owned"}}}
+        with mock.patch.object(adbm, "builds_meta", return_value=build), \
+                mock.patch.object(adbm, "pick", return_value=[(35, "unverified")]), \
+                mock.patch.object(adbm, "adb_ok") as adb_ok, mock.patch.object(adbm, "adb") as adb_call:
+            for step in ("clear --as before", "launch --clear --as before"):
+                rc, result = self.run_batch([step])
+                self.assertEqual(rc, 1)
+                self.assertIn("stopped at [1]", result)
+            adb_ok.assert_not_called()
+            adb_call.assert_not_called()
 
     def run_batch(self, steps, keep_going=False, **dev):
         out = io.StringIO()
@@ -624,6 +637,126 @@ class StatusTest(unittest.TestCase):
         self.assertFalse(s["calls_complete"])
         self.assertIsNone(s["saved"])
         self.assertIsNone(s["by_command"]["ui"]["calls"])
+
+
+class SideBySideTest(unittest.TestCase):
+    def setUp(self):
+        self.fix = os.path.join(FIX, "side-by-side")
+        with open(os.path.join(self.fix, "AndroidManifest.xml"), encoding="utf-8") as f:
+            self.text, self.labels = adbm.rename_manifest(f.read(), "com.foo.app", "com.foo.app.before")
+
+    def test_package_authorities_permissions_move(self):
+        t = self.text
+        self.assertIn('package="com.foo.app.before"', t)
+        self.assertIn('android:authorities="com.foo.app.before.androidx-startup"', t)
+        self.assertIn('android:authorities="com.foo.app.before.files;com.other.lib"', t)
+        self.assertIn('android:readPermission="com.foo.app.before.READ"', t)
+        self.assertEqual(t.count("com.foo.app.before.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"), 2)
+        # a longer package with the same start is someone else's
+        self.assertIn('android:authorities="com.foo.apple"', t)
+
+    def test_class_names_and_system_names_stay(self):
+        t = self.text
+        for keep in ('android:name="com.foo.app.MainActivity"', 'android:name="com.foo.app.App"',
+                     'android:targetActivity="com.foo.app.MainActivity"', 'android:name="com.foo.app.Apple"',
+                     'android:permission="android.permission.BIND_JOB_SERVICE"',
+                     'android:name="android.permission.INTERNET"'):
+            self.assertIn(keep, t)
+
+    def test_labels_of_app_and_launcher_only(self):
+        self.assertEqual(self.labels, ["@string/app_name", "Foo Lite"])
+        t, missed = adbm.mark_labels(self.text, self.labels, "before")
+        self.assertEqual(missed, [])
+        self.assertIn('android:label="Foo Lite · before"', t)
+        self.assertIn('android:label="Settings"', t)
+        self.assertIn('android:label="@string/app_name"', t)
+
+    def test_label_with_entities(self):
+        text = ('<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="a.b">'
+                '<application android:label="Foo &amp; &quot;Bar&quot;"/></manifest>')
+        text, labels = adbm.rename_manifest(text, "a.b", "a.b.before")
+        self.assertEqual(labels, ['Foo & "Bar"'])
+        t, missed = adbm.mark_labels(text, labels, "before")
+        self.assertEqual(missed, [])
+        self.assertIn('android:label="Foo &amp; &quot;Bar&quot; · before"', t)
+
+    def test_strings_get_the_mark(self):
+        def read(lang):
+            with open(os.path.join(self.fix, "res", lang, "strings.xml"), encoding="utf-8") as f:
+                return adbm.mark_strings(f.read(), ["app_name"], "before")
+        en = read("values")
+        self.assertIn('<string name="app_name">Foo · before</string>', en)
+        self.assertIn('<string name="app_name_short">Foo short</string>', en)
+        self.assertIn('<string name="app_name">"Фу · before"</string>', read("values-ru"))
+
+    def test_package_by_build(self):
+        real = adbm.builds_meta
+        adbm.builds_meta = lambda: {"before": {"package": "com.foo.app.before", "orig_package": "com.foo.app",
+                                               "side_by_side": True}, "after": {"package": "com.foo.app"}}
+        try:
+            self.assertEqual(adbm.default_package(), "com.foo.app")
+            self.assertEqual(adbm.default_package("before"), "com.foo.app.before")
+            a = types.SimpleNamespace(package=None, as_="before")
+            self.assertEqual(adbm.need_package(a), "com.foo.app.before")
+            with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+                adbm.need_package(types.SimpleNamespace(package="com.x", as_="before"))
+            a = types.SimpleNamespace(args=["reset"], as_="before")
+            adbm.perm_args(a)
+            self.assertEqual((a.package, a.action, a.permissions), ("com.foo.app.before", "reset", []))
+            a = types.SimpleNamespace(args=["com.x", "grant", "CAMERA"], as_=None)
+            adbm.perm_args(a)
+            self.assertEqual((a.package, a.action, a.permissions), ("com.x", "grant", ["CAMERA"]))
+        finally:
+            adbm.builds_meta = real
+
+    def test_sequential_builds_cannot_be_addressed_by_alias(self):
+        builds = {side: {"package": "com.foo.app"} for side in adbm.VERSIONS}
+        with mock.patch.object(adbm, "builds_meta", return_value=builds):
+            for side in adbm.VERSIONS:
+                with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+                    adbm.need_package(types.SimpleNamespace(as_=side))
+            self.assertEqual(adbm.need_package(types.SimpleNamespace(package="com.foo.app")), "com.foo.app")
+
+    def test_uninstall_alias_rejects_unverified_devices_before_uninstalling_anything(self):
+        pkg = "com.foo.app.before"
+        path = "package:/data/app/owned/base.apk"
+        build = {"before": {"package": pkg, "install_paths": {"emu-a": path}}}
+        a = types.SimpleNamespace(as_="before")
+        for devices, installed in (([(33, "emu-a"), (35, "emu-b")], path),
+                                   ([(33, "emu-a")], "package:/data/app/replaced/base.apk")):
+            with mock.patch.object(adbm, "builds_meta", return_value=build), \
+                    mock.patch.object(adbm, "pick", return_value=devices), \
+                    mock.patch.object(adbm, "installed_apk_path", return_value=installed), \
+                    mock.patch.object(adbm, "adb_ok") as adb_ok, \
+                    self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+                adbm.cmd_uninstall(a)
+            adb_ok.assert_not_called()
+
+    def test_side_by_side_flow_must_name_selected_package(self):
+        builds = {"before": {"package": "com.foo.app.before", "side_by_side": True},
+                  "after": {"package": "com.foo.app"}}
+        original = "appId: com.foo.app\n---\n- clearState: com.foo.app # reset test data\n"
+        clone = 'appId: "com.foo.app.before" # before copy\n---\n- launchApp\n'
+        for text, side in ((original, "before"), (clone, "after"), ("---\n- launchApp\n", "before")):
+            with self.subTest(side=side), self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+                adbm.check_side_by_side_flow(text, builds[side], builds)
+        adbm.check_side_by_side_flow(clone, builds["before"], builds)
+        adbm.check_side_by_side_flow(original, builds["after"], builds)
+
+    def test_save_flow_keeps_side_by_side_package_in_header_and_steps(self):
+        with tempfile.TemporaryDirectory() as temp:
+            package = "com.foo.app.before"
+            entries = [{"op": op, "api": 35, "package": package} for op in ("launch", "stopped", "data cleared")]
+            with open(os.path.join(temp, "session.jsonl"), "w") as journal:
+                journal.write("\n".join(map(json.dumps, entries)))
+            dest = os.path.join(temp, "flow.yaml")
+            args = types.SimpleNamespace(api="35", app=None, out=dest, force=False, slug="test")
+            with mock.patch.object(adbm, "CACHE", temp), contextlib.redirect_stdout(io.StringIO()):
+                adbm.cmd_save_flow(args)
+            with open(dest) as f:
+                text = f.read()
+            for field in ("appId", "stopApp", "clearState"):
+                self.assertIn(f"{field}: {package}\n", text)
 
 
 class ToolsTest(unittest.TestCase):

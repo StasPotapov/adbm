@@ -32,8 +32,9 @@ import tempfile
 import threading
 import time
 import xml.etree.ElementTree as ET
+from xml.sax import saxutils
 
-VERSION = "0.3.2"
+VERSION = "0.4.0"
 HERE = os.path.dirname(os.path.realpath(__file__))
 SKILL_DIR = os.path.dirname(HERE)
 VIEWER = os.path.join(SKILL_DIR, "viewer", "index.html")
@@ -994,6 +995,9 @@ def cmd_doctor(a):
     mcli = mobilecli_bin()
     row(True if mcli else None, "mobilecli (optional)", mcli or "only for the clipboard and fast non-ASCII typing; "
         "the rest works without it", "adbm setup --mobilecli --yes")
+    apkt = apktool_bin()
+    row(True if apkt else None, "apktool (optional)", apkt or "only for install --side-by-side (two builds on one "
+        "device); the rest works without it", "adbm setup --apktool --yes")
     for ok, name, detail, fix in claude_rows():
         row(ok, name, detail, fix)
     cfg, problems = load_config()
@@ -1085,7 +1089,7 @@ def cmd_setup(a):
     avds = avd_index()
     running = {d["name"] for d in list_devices() if d["emulator"]} if sdk_tool("platform-tools", "adb") else set()
     apis = parse_apis(a.api)
-    if apis is None and not (a.tune or a.maestro or a.hook or a.agent or a.android_cli or a.mobilecli):
+    if apis is None and not (a.tune or a.maestro or a.hook or a.agent or a.android_cli or a.mobilecli or a.apktool):
         apis = config_apis()
         if not apis:
             die("pass --api 28,33,35, or ask the person and run adbm config --set devices.apis=28,33,35 --project")
@@ -1164,6 +1168,11 @@ def cmd_setup(a):
                           ["npm", "install", "-g", "mobilecli@latest"]))
         else:
             print("mobilecli: no npm — install Node.js, or see https://github.com/mobile-next/mobilecli#installation")
+    if a.apktool and not apktool_bin():
+        if shutil.which("brew"):
+            steps.append(("apktool (for install --side-by-side)", ["brew", "install", "apktool"]))
+        else:
+            die(f"apktool: no Homebrew — {pkg_hint('apktool', 'apktool')}, or see https://apktool.org/docs/install")
     if root and any(not callable(c) and c[0] == sdkm for _, c in steps) \
             and not os.path.exists(os.path.join(root, "licenses", "android-sdk-license")):
         msg = ("the Android SDK licenses are not accepted, so sdkmanager cannot download images. "
@@ -1553,21 +1562,170 @@ def cmd_restore(a):
     return 0 if all(ok for ok, _ in res) else 1
 
 
+def build_tool(name):
+    """A tool from the newest SDK build-tools (aapt, zipalign, apksigner), else None."""
+    root = sdk_root()
+    tools = sorted(glob.glob(os.path.join(root, "build-tools", "*", name)),
+                   key=lambda t: [int(x) if x.isdigit() else 0 for x in re.split(r"[.-]", t.split(os.sep)[-2])]) if root else []
+    return tools[-1] if tools else None
+
+
 def apk_info(apk):
     """{'package', 'min_sdk', 'target_sdk'} from aapt dump badging; missing ones are None."""
-    info = {"package": None, "min_sdk": None, "target_sdk": None, "tool": None}
-    root = sdk_root()
-    tools = sorted(glob.glob(os.path.join(root, "build-tools", "*", "aapt")),
-                   key=lambda t: [int(x) if x.isdigit() else 0 for x in re.split(r"[.-]", t.split(os.sep)[-2])]) if root else []
-    if tools:
-        info["tool"] = tools[-1]
-        _, out, _ = sh([tools[-1], "dump", "badging", apk], timeout=60)
+    info = {"package": None, "min_sdk": None, "target_sdk": None, "tool": build_tool("aapt")}
+    if info["tool"]:
+        _, out, _ = sh([info["tool"], "dump", "badging", apk], timeout=60)
         for key, rx in (("package", r"package: name='([^']+)'"), ("min_sdk", r"^sdkVersion:'(\d+)'"),
                         ("target_sdk", r"^targetSdkVersion:'(\d+)'")):
             m = re.search(rx, out, re.M)
             if m:
                 info[key] = int(m.group(1)) if key != "package" else m.group(1)
     return info
+
+
+ANDROID_NS = "{http://schemas.android.com/apk/res/android}"
+# attributes whose values name the app's own authorities and permissions: they move to the new package
+OWN_NAME_ATTRS = ("authorities", "permission", "readPermission", "writePermission")
+OWN_NAME_TAGS = ("permission", "uses-permission", "permission-group", "permission-tree")
+
+
+def renamed(value, old, new):
+    """`old` or `old.<rest>` → the same with `new`; other values as they are."""
+    return new + value[len(old):] if value == old or value.startswith(old + ".") else value
+
+
+def rename_manifest(text, old, new):
+    """Decoded AndroidManifest.xml → (text with package `new`, [android:label values to mark]).
+
+    Class names stay: apktool writes them in full, so they still point to the code. Authorities and the
+    app's own permissions move, else Android refuses the second install (CONFLICTING_PROVIDER, DUPLICATE_PERMISSION).
+    """
+    text, n = re.subn(r'(<manifest\b[^>]*?\spackage=")' + re.escape(old) + '"', lambda m: m.group(1) + new + '"', text, count=1)
+    if not n:
+        die(f"side-by-side: the manifest has no package=\"{old}\"")
+
+    def attr(m):
+        name, value = m.group(1), m.group(2)
+        if name == "authorities":
+            value = ";".join(renamed(v, old, new) for v in value.split(";"))
+        else:
+            value = renamed(value, old, new)
+        return f'android:{name}="{value}"'
+
+    text = re.sub(r'android:(' + "|".join(OWN_NAME_ATTRS) + r')="([^"]*)"', attr, text)
+    text = re.sub(r'(<(?:' + "|".join(OWN_NAME_TAGS) + r')\b[^>]*?\sandroid:name=")([^"]*)"',
+                  lambda m: m.group(1) + renamed(m.group(2), old, new) + '"', text)
+    labels = []
+    root = ET.fromstring(text)
+    app = root.find("application")
+    if app is not None:
+        labels.append(app.get(ANDROID_NS + "label"))
+        for act in app.findall("activity") + app.findall("activity-alias"):
+            cats = {c.get(ANDROID_NS + "name") for f in act.findall("intent-filter") for c in f.findall("category")}
+            if "android.intent.category.LAUNCHER" in cats:
+                labels.append(act.get(ANDROID_NS + "label"))
+    return text, list(dict.fromkeys(l for l in labels if l))
+
+
+def mark_labels(text, labels, mark):
+    """Literal android:label values in the manifest get ` · mark`; @string/ ones are left for mark_strings.
+    Returns (text, literal labels not found)."""
+    missed = []
+    for l in labels:
+        if l.startswith("@"):
+            continue
+        # ElementTree gives the value decoded, the file keeps it escaped
+        attr = 'android:label="' + saxutils.escape(l, {'"': "&quot;"}) + '"'
+        if attr not in text:
+            missed.append(l)
+        text = text.replace(attr, attr[:-1] + f' · {mark}"')
+    return text, missed
+
+
+def mark_strings(text, names, mark):
+    """strings.xml text: the strings `names` get ` · mark` at the end (inside quotes, if the value is quoted)."""
+    def one(m):
+        body = m.group(2)
+        body = body[:-1] + f" · {mark}\"" if len(body) > 1 and body.startswith('"') and body.endswith('"') else body + f" · {mark}"
+        return m.group(1) + body + m.group(3)
+
+    for n in names:
+        text = re.sub(r'(<string\s+name="' + re.escape(n) + r'"[^>]*>)(.*?)(</string>)', one, text, flags=re.S)
+    return text
+
+
+def apktool_bin():
+    return shutil.which("apktool")
+
+
+def debug_keystore():
+    """~/.android/debug.keystore, created like Android Studio does when it is missing."""
+    ks = os.path.expanduser("~/.android/debug.keystore")
+    if os.path.exists(ks):
+        return ks
+    java = shutil.which("java")
+    kt = shutil.which("keytool") or (java and os.path.join(os.path.dirname(os.path.realpath(java)), "keytool"))
+    if not kt or not os.path.exists(kt):
+        die("side-by-side: no ~/.android/debug.keystore and no keytool to create it — install Java 17+ (adbm doctor)")
+    os.makedirs(os.path.dirname(ks), exist_ok=True)
+    sh([kt, "-genkeypair", "-keystore", ks, "-storepass", "android", "-alias", "androiddebugkey", "-keypass", "android",
+        "-keyalg", "RSA", "-keysize", "2048", "-validity", "10000", "-dname", "CN=Android Debug,O=Android,C=US"],
+       timeout=60, check=True)
+    return ks
+
+
+def side_by_side_apk(apk, pkg, mark, sha):
+    """A copy of the APK with package `pkg.mark` and ` · mark` in its name, signed with the debug key.
+    Cached by the source sha1: a second install does not rebuild it. Returns (path, new package, cached)."""
+    new = f"{pkg}.{mark}"
+    out = os.path.join(project_cache(), "side-by-side", f"{sha}-{mark}.apk")
+    if os.path.exists(out):
+        return out, new, True
+    tool = apktool_bin()
+    if not tool:
+        die("--side-by-side needs apktool — adbm setup --apktool --yes")
+    zipalign, apksigner = build_tool("zipalign"), build_tool("apksigner")
+    if not zipalign or not apksigner:
+        die("--side-by-side needs SDK Build-Tools 35+ — sdkmanager \"build-tools;35.0.0\"")
+
+    def step(what, cmd, timeout=600):
+        code, o, e = sh(cmd, timeout=timeout)
+        if code != 0:
+            die(f"side-by-side: {what} failed — {((o + e).strip().splitlines() or [f'code {code}'])[-1]}")
+
+    d = tempfile.mkdtemp(prefix="adbm-sbs-")
+    try:
+        src = os.path.join(d, "src")
+        # -s: the code stays as it is, only the manifest and the resources are decoded
+        step("apktool d", [tool, "d", "-s", "-f", "-o", src, apk])
+        man_p = os.path.join(src, "AndroidManifest.xml")
+        text, labels = rename_manifest(open(man_p, encoding="utf-8").read(), pkg, new)
+        text, missed = mark_labels(text, labels, mark)
+        open(man_p, "w", encoding="utf-8").write(text)
+        names = [l.split("/", 1)[1] for l in labels if l.startswith("@string/")]
+        hit = False
+        for p in glob.glob(os.path.join(src, "res", "values*", "strings.xml")):
+            s = open(p, encoding="utf-8").read()
+            t = mark_strings(s, names, mark)
+            if t != s:
+                open(p, "w", encoding="utf-8").write(t)
+                hit = True
+        if not labels or names and not hit or missed:
+            print(f"warning: side-by-side: the app name was not found — the launcher shows both builds under one name; "
+                  f"tell them apart by the package {new}")
+        step("apktool b", [tool, "b", "-o", os.path.join(d, "unsigned.apk"), src])
+        step("zipalign (needs SDK Build-Tools 35+)", [zipalign, "-P", "16", "-f", "4",
+             os.path.join(d, "unsigned.apk"), os.path.join(d, "aligned.apk")])
+        step("apksigner", [apksigner, "sign", "--ks", debug_keystore(), "--ks-pass", "pass:android",
+                           "--ks-key-alias", "androiddebugkey", "--key-pass", "pass:android",
+                           "--out", os.path.join(d, "signed.apk"), os.path.join(d, "aligned.apk")])
+        os.makedirs(os.path.dirname(out), exist_ok=True)
+        for old in glob.glob(os.path.join(os.path.dirname(out), f"*-{mark}.apk")):
+            os.remove(old)
+        shutil.move(os.path.join(d, "signed.apk"), out)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+    return out, new, False
 
 
 def cmd_install(a):
@@ -1590,15 +1748,25 @@ def cmd_install(a):
         for chunk in iter(lambda: f.read(1 << 20), b""):
             h.update(chunk)
     sha = h.hexdigest()[:10]
+    apk, orig = a.apk, pkg
+    if a.side_by_side:
+        if not pkg:
+            die("--side-by-side needs the package of the APK, and aapt cannot read it — sdkmanager \"build-tools;35.0.0\"")
+        t0 = time.time()
+        apk, pkg, cached = side_by_side_apk(a.apk, orig, a.as_, sha)
+        print(f"{a.as_}: side by side as {pkg} · name \"… · {a.as_}\" · "
+              + ("the copy from the cache" if cached else f"copy built in {time.time() - t0:.0f} s"))
 
     def one(api, s):
-        code, out, err = adb(s, "install", "-r", "-d", "-t", a.apk, timeout=300)
+        code, out, err = adb(s, "install", "-r", "-d", "-t", apk, timeout=300)
         ok = code == 0 and "Success" in out
-        return ok, ((out + err).strip().splitlines() or [f"adb install returned {code}"])[-1] if not ok else ""
+        if not ok:
+            return False, ((out + err).strip().splitlines() or [f"adb install returned {code}"])[-1], None
+        return True, "", installed_apk_path(s, pkg) if pkg else None
 
     res = parallel(targets, one)
     bad = 0
-    for (api, s), (ok, msg) in zip(targets, res):
+    for (api, s), (ok, msg, _) in zip(targets, res):
         print(f"{api}: " + ("installed" if ok else f"error — {msg}"))
         bad += not ok
     if bad == len(targets):
@@ -1609,11 +1777,15 @@ def cmd_install(a):
         meta = json.load(open(meta_p))
     except Exception:
         meta = {}
-    other = meta.get("before" if a.as_ == "after" else "after", {}).get("package")
-    if pkg and other and other != pkg:
-        print(f"warning: package {pkg} differs from the other build ({other}) — before/after compare different apps")
+    ob = meta.get("before" if a.as_ == "after" else "after", {})
+    other = ob.get("orig_package") or ob.get("package")
+    if orig and other and other != orig:
+        print(f"warning: package {orig} differs from the other build ({other}) — before/after compare different apps")
     meta[a.as_] = {"apk": os.path.abspath(a.apk), "package": pkg, "sha1": sha,
-                   "min_sdk": info["min_sdk"], "target_sdk": info["target_sdk"]}
+                   "min_sdk": info["min_sdk"], "target_sdk": info["target_sdk"],
+                   "install_paths": {s: path for (_, s), (ok, _, path) in zip(targets, res) if ok and path}}
+    if a.side_by_side:
+        meta[a.as_].update(orig_package=orig, side_by_side=True)
     json.dump(meta, open(meta_p, "w"), ensure_ascii=False, indent=1)
     sdk = f" minSdk {info['min_sdk']} targetSdk {info['target_sdk']}" if info["min_sdk"] else ""
     print(f"{a.as_}: {os.path.basename(a.apk)} {pkg or ''}{sdk} sha1 {sha}")
@@ -1878,6 +2050,21 @@ def batch_steps(steps, parser):
         except SystemExit as e:
             why = "help is not a step" if e.code == 0 else (out.getvalue().strip().splitlines() or ["cannot parse"])[-1]
             die(f"step [{i}] {text!r}: {why}")
+        # a step without a package takes the installed build's: found now, so a missing build stops nothing half-done
+        if ns.cmd in ("launch", "stop", "clear", "perm") or ns.cmd == "open" and ns.as_:
+            try:
+                with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+                    if ns.cmd == "perm":
+                        perm_args(ns)
+                    elif ns.cmd == "open":
+                        ns.app = need_package(ns)
+                        ns.as_ = None
+                    elif ns.as_:
+                        need_package(ns)
+                    else:
+                        ns.package = need_package(ns)
+            except SystemExit:
+                die(f"step [{i}] {text!r}: " + (out.getvalue().strip().splitlines() or ["no package"])[-1].removeprefix("error: "))
         res.append((text, ns))
     return res
 
@@ -1935,6 +2122,9 @@ def cmd_batch(a):
 
 def cmd_launch(a):
     targets = pick(a, multi=True)
+    a.package = need_package(a)
+    if a.clear and a.as_:
+        require_build_on_targets(a.as_, a.package, targets)
 
     def one(api, s):
         if a.stop or a.clear:
@@ -2038,27 +2228,61 @@ def adb_error(out):
     return trunc(m.group(1) if m else (lines[-1] if lines else "no answer"), 160)
 
 
-def default_package():
-    """The package of the installed build: the current run, else the project cache; "after" first."""
+def builds_meta():
+    """builds.json of the current run, else of the project cache; {} without an install."""
     for base in (current_run(create=False), project_cache()):
         try:
-            b = json.load(open(os.path.join(base, "builds.json")))
+            return json.load(open(os.path.join(base, "builds.json")))
         except Exception:
             continue
-        for v in ("after", "before"):
-            if b.get(v, {}).get("package"):
-                return b[v]["package"]
+    return {}
+
+
+def default_package(version=None, builds=None):
+    """The recorded package for a build, with "after" first when no build is specified."""
+    b = builds_meta() if builds is None else builds
+    for v in (version,) if version else ("after", "before"):
+        m = b.get(v, {})
+        if m.get("package"):
+            return m["package"]
     return None
 
 
 def need_package(a):
-    pkg = getattr(a, "package", None) or default_package()
+    version = getattr(a, "as_", None)
+    given = getattr(a, "package", None) or getattr(a, "app", None)
+    if version and given:
+        die(f"pass either the package {given} or --as {version}, not both")
+    builds = builds_meta() if not given else {}
+    pkg = given or default_package(version, builds)
     if not pkg:
-        die("pass the package: no adbm install in this project yet")
+        die(f"no build {version} installed: adbm install <apk> --as {version}" if version
+            else "pass the package: no adbm install in this project yet")
+    if version and all(builds.get(v, {}).get("package") == pkg for v in VERSIONS):
+        die(f"both build labels refer to {pkg}; --as cannot tell which build is installed. "
+            "Reinstall the intended APK and explicitly name its package.")
     return pkg
 
 
+def installed_apk_path(serial, pkg):
+    out = ashell(serial, f"pm path {shlex.quote(pkg)}", timeout=15)
+    return next((line for line in out.splitlines() if line.startswith("package:") and line.endswith("/base.apk")), None)
+
+
+def require_build_on_targets(version, pkg, targets):
+    """A destructive alias must still point to the installation ADBM recorded on each device."""
+    saved = builds_meta().get(version, {})
+    paths = saved.get("install_paths", {})
+    for _, serial in targets:
+        path = paths.get(serial) if saved.get("package") == pkg else None
+        if not path or installed_apk_path(serial, pkg) != path:
+            die(f"cannot confirm build {version} ({pkg}) on {serial}; reinstall it with adbm "
+                "or explicitly name the package if you intend to delete its data.")
+
+
 def cmd_log(a):
+    if a.as_ and (a.crash or a.all or a.tag):
+        die("log --as cannot be combined with --crash, --all or --tag; use crashes --as for an app's crashes")
     api, s = pick(a)[0]
     n = a.n
     if a.crash:
@@ -2067,7 +2291,7 @@ def cmd_log(a):
     else:
         cmd = ["logcat", "-d", "-v", "brief"]
         what = "all"
-        pkg = None if a.all else (a.app or default_package())
+        pkg = None if a.all else (need_package(a) if a.as_ else a.app or default_package())
         if a.tag:
             cmd += ["-s", f"{a.tag}:V"]
             what = f"tag {a.tag}"
@@ -2236,6 +2460,10 @@ def parse_when(s, now):
 
 
 def cmd_crashes(a):
+    if a.as_:
+        if a.id:
+            die("use crashes --as to list crashes or crashes <id> to read one")
+        a.app = need_package(a)
     if a.id and (a.since or a.until):
         die("--since/--until filter the list; with a crash id they are not needed")
     for w in (a.since, a.until):
@@ -2434,11 +2662,12 @@ def cmd_location(a):
 
 def cmd_open(a):
     targets = pick(a, multi=True)
+    app = need_package(a) if a.as_ else a.app
 
     def one(api, s):
         cmd = f"am start -W -a android.intent.action.VIEW -d {shlex.quote(a.uri)}"
-        if a.app:
-            cmd += f" {shlex.quote(a.app)}"
+        if app:
+            cmd += f" {shlex.quote(app)}"
         ok, out = adb_ok(s, cmd)
         bad = not ok or re.search(r"Error|unable to resolve|No Activity", out)
         if not bad:
@@ -2456,7 +2685,22 @@ def full_perm(p):
     return p if "." in p else "android.permission." + p.upper()
 
 
+PERM_ACTIONS = ("grant", "revoke", "reset")
+
+
+def perm_args(a):
+    """[package] action [permissions…] → a.package, a.action, a.permissions; no package — the installed build."""
+    rest = list(a.args)
+    a.package = rest.pop(0) if rest[0] not in PERM_ACTIONS else None
+    if not rest or rest[0] not in PERM_ACTIONS:
+        die("adbm perm [<package>] grant|revoke|reset [PERMISSION …]")
+    a.action, a.permissions = rest[0], rest[1:]
+    a.package = need_package(a)
+    a.args, a.as_ = [a.package, a.action] + a.permissions, None
+
+
 def cmd_perm(a):
+    perm_args(a)
     targets = pick(a, multi=True)
     perms = [full_perm(p) for p in a.permissions]
     if a.action in ("grant", "revoke") and not perms:
@@ -2493,6 +2737,8 @@ def cmd_perm(a):
 def app_action(a, verb, cmd, check):
     targets = pick(a, multi=True)
     pkg = need_package(a)
+    if a.as_ and verb in ("data cleared", "uninstalled"):
+        require_build_on_targets(a.as_, pkg, targets)
 
     def one(api, s):
         if not ashell(s, f"pm path {shlex.quote(pkg)}", timeout=15).startswith("package:"):
@@ -3065,6 +3311,21 @@ def maestro_failure(log):
     return msg.split(". Check the UI hierarchy")[0][:200]
 
 
+def check_side_by_side_flow(text, build, builds):
+    """An APK clone requires a flow that names its installed appId explicitly."""
+    if not any(b.get("side_by_side") for b in builds.values()):
+        return
+    app = build.get("package")
+    if not app:
+        die("no APK recorded for the selected build: install it with adbm install --as before|after")
+    header = re.split(r"^---[ \t]*(?:#.*)?$", text, maxsplit=1, flags=re.M)[0]
+    ids = re.findall(r"^appId:[ \t]*([^\r\n]+)$", header, re.M)
+    pkg = re.escape(app)
+    if len(ids) != 1 or not re.fullmatch(rf"""(?:{pkg}|"{pkg}"|'{pkg}')(?:[ \t]+#.*)?[ \t]*""", ids[0]):
+        die(f"this flow must declare appId: {app} for the selected build. "
+            "Update its steps and subflows that explicitly name a package before running it.")
+
+
 def cmd_run(a):
     mae = maestro_bin()
     if not mae:
@@ -3078,13 +3339,19 @@ def cmd_run(a):
     version = default_as(run, a)
     cells, keys = parse_matrix(a.matrix)
     app = min_sdk = None
+    builds, build = {}, {}
     try:
-        build = json.load(open(os.path.join(run, "builds.json"))).get(version, {})
+        meta = json.load(open(os.path.join(run, "builds.json")))
+        builds = {v: b for v, b in meta.items() if v in VERSIONS and isinstance(b, dict)}
+        build = builds.get(version, {})
         app, min_sdk = build.get("package"), build.get("min_sdk")
     except Exception:
         pass
-    m = re.search(r"^appId:\s*(\S+)", open(flow).read(), re.M)
-    app = app or (m.group(1) if m else None)
+    text = open(flow).read()
+    check_side_by_side_flow(text, build, builds)
+    m = re.search(r"^appId:\s*(\S+)", text, re.M)
+    flow_app = m.group(1).strip("'\"") if m else None
+    app = app or flow_app
     envs = []
     for e in a.env or []:
         envs += ["-e", e]
@@ -4173,6 +4440,7 @@ def build_parser():
     p.add_argument("--maestro", action="store_true")
     p.add_argument("--android-cli", action="store_true")
     p.add_argument("--mobilecli", action="store_true", help="mobilecli via npm: clipboard, fast non-ASCII typing")
+    p.add_argument("--apktool", action="store_true", help="apktool via Homebrew: install --side-by-side")
     p.add_argument("--hook", action="store_true", help="add the guard hook to ~/.claude/settings.json")
     p.add_argument("--agent", action="store_true", help="link the adbm-eyes agent into ~/.claude/agents/")
     p.add_argument("--yes", action="store_true", help="run the plan")
@@ -4201,6 +4469,8 @@ def build_parser():
     p = add("install", cmd_install, "install an APK on devices", "multi")
     p.add_argument("apk")
     p.add_argument("--as", dest="as_", choices=VERSIONS, default="after", help="default: after")
+    p.add_argument("--side-by-side", action="store_true", help="install next to the other build: package "
+                   "<package>.<as>, name \"<name> · <as>\", debug signature (needs apktool)")
     p = add("new", cmd_new, "start a new run build/adbm/<date>-<slug>")
     p.add_argument("slug")
     p.add_argument("--as", dest="as_", choices=VERSIONS)
@@ -4245,8 +4515,9 @@ Each step is one quoted argument; a text with spaces inside a step takes its own
 Every step is parsed before the first one runs: a typo or an unknown command stops the batch with nothing done.
 Output: "[N] <step>" before each step's own output, then "batch: K of N ok[, stopped at [i] | failed [i], …]".
 Exit code: that of the first failed step, else 0. In adbm status each step counts as its own command."""
-    p = add("launch", cmd_launch, "launch an app", "multi")
-    p.add_argument("package")
+    p = add("launch", cmd_launch, "launch an app (default: the installed build)", "multi")
+    p.add_argument("package", nargs="?")
+    p.add_argument("--as", dest="as_", choices=VERSIONS, help="the package of this installed build")
     p.add_argument("--clear", action="store_true", help="pm clear before launch")
     p.add_argument("--stop", action="store_true", help="force-stop before launch")
     p = add("type", cmd_type, "type text into the focused field; non-ASCII goes through the clipboard (mobilecli) or Maestro", "one")
@@ -4266,21 +4537,27 @@ Exit code: that of the first failed step, else 0. In adbm status each step count
     p.add_argument("--ms", type=int, default=300)
     p = add("stop", cmd_stop, "force-stop an app (default: the installed build)", "multi")
     p.add_argument("package", nargs="?")
+    p.add_argument("--as", dest="as_", choices=VERSIONS, help="the package of this installed build")
     p = add("clear", cmd_clear, "clear app data, pm clear (default: the installed build)", "multi")
     p.add_argument("package", nargs="?")
+    p.add_argument("--as", dest="as_", choices=VERSIONS, help="the package of this installed build")
     p = add("uninstall", cmd_uninstall, "uninstall an app (default: the installed build)", "multi")
     p.add_argument("package", nargs="?")
+    p.add_argument("--as", dest="as_", choices=VERSIONS, help="the package of this installed build")
     p = add("open", cmd_open, "open a deep link or URL: am start -a VIEW -d <uri>", "multi")
     p.add_argument("uri")
     p.add_argument("--app", help="package that must handle the link")
-    p = add("perm", cmd_perm, "runtime permissions: grant, revoke, reset", "multi")
-    p.add_argument("package")
-    p.add_argument("action", choices=("grant", "revoke", "reset"))
-    p.add_argument("permissions", nargs="*", help="CAMERA or android.permission.CAMERA; reset without names: all")
+    p.add_argument("--as", dest="as_", choices=VERSIONS, help="the installed build that must handle the link")
+    p = add("perm", cmd_perm, "runtime permissions: grant, revoke, reset (default package: the installed build)", "multi")
+    p.add_argument("args", nargs="+", metavar="ARG", help="[package] grant|revoke|reset [PERMISSION …]; "
+                   "a permission is CAMERA or android.permission.CAMERA; reset without names: all")
+    p.usage = "adbm perm [<package>] grant|revoke|reset [PERMISSION …] [--api API | --serial SERIAL] [--as before|after]"
+    p.add_argument("--as", dest="as_", choices=VERSIONS, help="the package of this installed build")
     p = add("log", cmd_log, "logcat tail: the app's process by default, --crash, --tag, --grep", "one")
     p.add_argument("-n", type=int, default=50, help="lines")
     p.add_argument("--crash", action="store_true", help="crash buffer")
     p.add_argument("--app", help="package (default: the installed build)")
+    p.add_argument("--as", dest="as_", choices=VERSIONS, help="the package of this installed build")
     p.add_argument("--tag")
     p.add_argument("--grep", metavar="REGEX")
     p.add_argument("--all", action="store_true", help="all processes")
@@ -4317,6 +4594,7 @@ to the emulator's default location. A phone below API 31 is not supported."""
             "(dropbox survives a reboot); with an id — the text of one crash", "one")
     p.add_argument("id", nargs="?", help="a crash id from the list: MMDD-HHMMSS-pid, e.g. 1023-132829-5355")
     p.add_argument("--app", help="only this package (and crashes whose text dropbox lost)")
+    p.add_argument("--as", dest="as_", choices=VERSIONS, help="only the package of this installed build")
     p.add_argument("-n", type=int, default=20, help="crashes in the list, newest first (default: 20)")
     p.add_argument("--lines", type=int, default=60, help="lines of one crash, without native register dumps (default: 60)")
     p.add_argument("--full", action="store_true", help="the whole text of one crash, registers included")

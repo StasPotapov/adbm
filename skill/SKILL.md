@@ -54,9 +54,10 @@ and `devices` before installing. Do not silently change VPN/firewall or treat `p
 | back, home, enter, keyboard, scroll, orientation | `key back` (`home`, `enter`, `hide-keyboard`, …), `swipe up`, `rotate landscape` |
 | wait for a screen, is a text there | `wait "<text>"`, `assert "<text>"`: exit code 0 or 1 |
 | several actions in a row: a form, a known path | `batch 'tap Email' 'type a@b.c' 'tap "Sign in" --expect Done' --ui`: one call, each step in its own quotes, stops at the first failure (`--keep-going` — run the rest); steps: `ui tap type clear-field key swipe wait assert launch stop clear open perm rotate clipboard location` |
-| install, launch, stop, clear data | `install <apk>`, `launch <pkg>`, `stop`, `clear`, `uninstall` |
+| install, launch, stop, clear data | `install <apk>`, `launch [<pkg>]`, `stop`, `clear`, `uninstall`; without a package — the installed build |
+| two builds of one app on one device, to compare by hand | `install <before.apk> --as before --side-by-side`, then `install <after.apk>`; pick a build with `--as before` on `launch`, `stop`, `clear`, `uninstall`, `log`, `crashes`, `perm`, `open`, `run` — `reference/setup.md`, "Two builds side by side" |
 | logs, crash | `log` (the app's process), `log --crash`, `log --grep <re>`; crash history with ANR and native, also before a reboot — `crashes [--app <pkg>]`, one crash — `crashes <id>` |
-| deep link, permission, file | `open <uri>`, `perm <pkg> grant CAMERA`, `push`, `pull` |
+| deep link, permission, file | `open <uri>`, `perm [<pkg>] grant CAMERA`, `push`, `pull` |
 | a screenshot | for you to see — `look` (~860 tokens); for the person — `shot <name>`, give the path, do not read it |
 | pair a phone over Wi-Fi with a QR | `pair --open`, or `pair --ip <Wi-Fi-IP>` when mDNS is unavailable; see `reference/connection.md` |
 | reconnect a paired Wi-Fi phone | `connect`, or `connect --ip <Wi-Fi-IP> [--port <debugging-port>]` |
@@ -107,7 +108,7 @@ For "how does it look", screens on a board, several API levels, a theme or navig
 | `reference/flows.md` | writing and fixing a Maestro flow |
 | `reference/api-matrix.md` | which API levels and axes to offer for a change |
 | `reference/connection.md` | QR pairing, Wi-Fi reconnect, mDNS/VPN/port diagnosis and required physical actions |
-| `reference/setup.md` | SDK, AVDs, Maestro, Android CLI, mobilecli, the live check after install, a "before" build in a worktree |
+| `reference/setup.md` | SDK, AVDs, Maestro, Android CLI, mobilecli, apktool, the live check after install, a "before" build in a worktree, two builds side by side |
 | `reference/adb.md` | raw adb for what `adbm` does not do |
 
 ## Leave the device as you found it

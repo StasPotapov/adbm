@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?><manifest xmlns:android="http://schemas.android.com/apk/res/android" android:compileSdkVersion="35" package="com.foo.app" platformBuildVersionCode="35">
+    <permission android:name="com.foo.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" android:protectionLevel="signature"/>
+    <uses-permission android:name="com.foo.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"/>
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <application android:label="@string/app_name" android:name="com.foo.app.App">
+        <activity android:exported="true" android:name="com.foo.app.MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+        <activity android:label="Settings" android:name="com.foo.app.SettingsActivity"/>
+        <activity-alias android:label="Foo Lite" android:name="com.foo.app.Lite" android:targetActivity="com.foo.app.MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <service android:name="com.foo.app.SyncJob" android:permission="android.permission.BIND_JOB_SERVICE"/>
+        <provider android:authorities="com.foo.app.androidx-startup" android:exported="false" android:name="androidx.startup.InitializationProvider"/>
+        <provider android:authorities="com.foo.app.files;com.other.lib" android:name="androidx.core.content.FileProvider" android:readPermission="com.foo.app.READ"/>
+        <provider android:authorities="com.foo.apple" android:name="com.foo.app.Apple"/>
+    </application>
+</manifest>

@@ -19,7 +19,8 @@ a reason to include API 35. Example of an offer: "Sheet insets → 28, 33, 35: e
 "Before": capture it before the change, or build the base commit in a `git worktree` (`setup.md`).
 "After": the current code. `adbm install` writes `builds.json` (package, sha1, minSdk) and the run's `.as`
 file only after a successful install on at least one device. It warns when "before" and "after" are
-different packages. Without `--as` the build is `after`.
+different packages. Without `--as` the build is `after`. Both builds on the device at once:
+`install --side-by-side` (`setup.md`, "Two builds side by side").
 
 ## Frames by hand
 

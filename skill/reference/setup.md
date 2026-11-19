@@ -14,6 +14,7 @@
 | Android CLI, optional | `adbm annotate` and `tap '#N'` on screens without a UI tree; the rest works without it | `adbm setup --android-cli --yes` (Homebrew cask `android-cli`; without Homebrew install it by hand) |
 | mobilecli, optional | `adbm clipboard`; `adbm type` pastes non-ASCII text through the clipboard (~2–3 s instead of ~8 s) | `adbm setup --mobilecli --yes` (`npm install -g mobilecli@latest`; without npm — install Node.js first) |
 | qrencode or Python qrcode[pil], optional | QR generation for `adbm pair` | macOS: `brew install qrencode`; Linux: `sudo apt install qrencode`; or install qrcode[pil] for the Python running adbm |
+| apktool, optional | `adbm install --side-by-side`: two builds of one app on one device; the rest works without it | `adbm setup --apktool --yes` (Homebrew `apktool`; without Homebrew — https://apktool.org/docs/install) |
 | SDK licenses | `sdkmanager` downloads images only after they are accepted | the person runs `sdkmanager --licenses` and accepts them; `adbm setup` stops and says so |
 | Guard hook (Claude Code) | denies `Read` of full-size frames | `adbm setup --hook --yes`: appends to `~/.claude/settings.json`; a plugin install has it |
 | `adbm-eyes`, optional | independent visual verdict | [launch the shared prompt in your client](visual-check.md#the-adbm-eyes-subagent); the Claude Code plugin also installs it as a native agent |
@@ -130,6 +131,44 @@ build "after", copy the APK and revert the file with `git checkout -- <file>`.
 Both APKs share one `applicationId`, so a device holds one version at a time.
 The order is: install "before", capture all "before", install "after", capture all "after".
 `adbm install` writes the package, `minSdk`, `targetSdk` and sha1 to the run's `builds.json`; the board shows them.
+When the person wants both builds on the device at once, see the next section.
+
+## Two builds side by side
+
+Use it only when the person asks to keep both builds on one device, for example to compare them by hand.
+The usual before/after check does not need it. Install apktool and Android SDK Build-Tools 35 or later.
+If there is no debug keystore, ADBM also needs Java's `keytool` to create one.
+Use the serial printed by `adbm devices` to target a phone even if an emulator is running.
+
+```bash
+"$ADBM" new compare-builds
+"$ADBM" install before.apk --as before --side-by-side --serial SERIAL
+"$ADBM" install after.apk --serial SERIAL
+"$ADBM" launch --as before --serial SERIAL
+"$ADBM" launch --as after --serial SERIAL
+```
+
+`--side-by-side` rewrites a copy of the APK; the source APK is not changed. The steps are fixed in `adbm`:
+`apktool d`, then the manifest gets the package `<pkg>.<as>`; provider authorities and the app's own permissions
+that start with the old package move to the new one; class names stay. The `android:label` of the app and of
+the launcher activities gets ` · before` (a `@string/…` label — in every `strings.xml`). Then `apktool b`,
+`zipalign` and `apksigner` with the debug key `~/.android/debug.keystore` (created if missing).
+The copy is cached by the APK's sha1: the second install takes it from the cache. On a 17 MB test APK the first install built the copy in ~5 s, the second took 0.3 s; `adbm` prints the time.
+
+`builds.json` records the device package, original APK package and `side_by_side: true`.
+For `run --as before`, the flow must declare the installed package (for example, `appId: com.example.before`).
+Update any steps and subflows that explicitly name a package. ADBM does not rewrite flows.
+`save-flow` keeps the package used on the device; use `flow new <slug> --app com.example.before`
+for a template for the clone. Only one APK copy is cached per build label.
+
+App commands accept either `--as` or an explicit package. If both build labels refer to the
+same package after sequential installs, reinstall the desired APK and target the package explicitly.
+With `--as`, `clear`, `uninstall` and `launch --clear` require a matching installation recorded
+by ADBM on every selected device. Reinstall the APK if it has since been replaced or the record is missing.
+
+Limits: a release APK gets the debug signature. The renamed build may not work where the app checks its
+package or signature: Firebase (`google-services.json`), Google sign-in, Play Integrity, its own signature check,
+a `FileProvider` authority built from `BuildConfig.APPLICATION_ID`. Then install the builds one after another.
 
 ## mobilecli
 
@@ -142,6 +181,7 @@ and keeps it for 30 minutes. The agent holds UiAutomation, so `uiautomator dump`
 `adbm` stops the agent after every call. The next mobilecli call starts it again.
 On Android 13+ a clipboard change shows a "copied" overlay for ~10 s; `adbm` closes it: a dismiss button on API 34–35,
 a swipe on API 33 and on the minimized overlay of API 37.
+
 
 ## Wireless phones
 

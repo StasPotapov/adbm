@@ -30,6 +30,8 @@ Commands omit the prefix, as in `SKILL.md`: run `"$ADBM" <command>`.
    - Screens: `install <apk>` if the build is not on the devices yet, then the frames (`shot` or `run … --matrix …`).
    - Before/after: `install <before.apk> --as before`, "before" frames, then `install <after.apk>` and the same
      "after" frames. A "before" APK from the base commit: `reference/setup.md`, "Before" and "after" builds.
+     The person wants both builds on the device at once: `install <before.apk> --as before --side-by-side`
+     (`reference/setup.md`, "Two builds side by side").
 5. **Diff and board.** `diff`, then `board`. With one build `diff` says `after only` and marks frames that
    look the same on another API level (`≈ apiN`); the board shows the frames without "before"/"after".
    A verdict: start `adbm-eyes` (next section) — always for before/after; for screens when the person asked
